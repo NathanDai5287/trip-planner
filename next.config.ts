@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  serverExternalPackages: ["bcrypt"],
+  allowedDevOrigins: ["3000.cal.taxi"],
 };
 
 export default nextConfig;

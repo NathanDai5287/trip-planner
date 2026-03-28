@@ -1,0 +1,253 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { Trip, Destination } from "@prisma/client";
+import { Map as MapIcon, PanelLeftClose, PanelLeft } from "lucide-react";
+import toast from "react-hot-toast";
+import { decodePolyline } from "@/lib/polyline";
+import { TripTitle } from "./trip-title";
+import { PlaceSearch } from "./place-search";
+import { DestinationList } from "./destination-list";
+import { TripActions } from "./trip-actions";
+import { TotalDriveTime } from "./total-drive-time";
+import { TripMap } from "@/components/map/trip-map";
+
+type TripWithDestinations = Trip & { destinations: Destination[] };
+
+export type RouteSegment = {
+  fromId: string;
+  toId: string;
+  duration: number;
+  geometry: [number, number][];
+};
+
+interface TripEditorProps {
+  trip: TripWithDestinations;
+}
+
+function TripEditor({ trip }: TripEditorProps) {
+  const [destinations, setDestinations] = useState<Destination[]>(
+    trip.destinations,
+  );
+  const [routes, setRoutes] = useState<RouteSegment[]>([]);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const routeCacheRef = useRef<Map<string, RouteSegment>>(new Map());
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchRoutes = useCallback(async (dests: Destination[]) => {
+    // Cancel any in-flight route fetching
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+
+    if (dests.length < 2) {
+      setRoutes([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const pairs: { from: Destination; to: Destination }[] = [];
+    for (let i = 0; i < dests.length - 1; i++) {
+      pairs.push({ from: dests[i], to: dests[i + 1] });
+    }
+
+    const newRoutes: RouteSegment[] = [];
+
+    for (const pair of pairs) {
+      if (controller.signal.aborted) return;
+
+      const cacheKey = `${pair.from.id}-${pair.to.id}`;
+      const cached = routeCacheRef.current.get(cacheKey);
+
+      if (cached) {
+        newRoutes.push(cached);
+        continue;
+      }
+
+      try {
+        const coords = `${pair.from.lng},${pair.from.lat};${pair.to.lng},${pair.to.lat}`;
+        const res = await fetch(`/api/osrm?coordinates=${coords}`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) throw new Error("Route fetch failed");
+
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+          const osrmRoute = data.routes[0];
+          const decoded = decodePolyline(osrmRoute.geometry);
+          // Polyline returns [lat, lng], GeoJSON needs [lng, lat]
+          const geometry: [number, number][] = decoded.map(([lat, lng]) => [
+            lng,
+            lat,
+          ]);
+
+          const segment: RouteSegment = {
+            fromId: pair.from.id,
+            toId: pair.to.id,
+            duration: osrmRoute.duration,
+            geometry,
+          };
+
+          routeCacheRef.current.set(cacheKey, segment);
+          newRoutes.push(segment);
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Failed to fetch route:", err);
+        // Continue without this route segment
+      }
+
+      // Rate limit: wait 1s between requests
+      if (!controller.signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (!controller.signal.aborted) {
+      setRoutes(newRoutes);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRoutes(destinations);
+    return () => {
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+    };
+  }, [destinations, fetchRoutes]);
+
+  const handleDestinationAdded = useCallback((dest: Destination) => {
+    setDestinations((prev) => [...prev, dest]);
+    toast.success(`Added ${dest.name}`);
+  }, []);
+
+  const handleDestinationRemoved = useCallback((destId: string) => {
+    setDestinations((prev) => prev.filter((d) => d.id !== destId));
+    // Invalidate route cache entries involving this destination
+    routeCacheRef.current.forEach((_, key) => {
+      if (key.includes(destId)) {
+        routeCacheRef.current.delete(key);
+      }
+    });
+  }, []);
+
+  const handleDestinationsReordered = useCallback((reordered: Destination[]) => {
+    setDestinations(reordered);
+    // Invalidate full route cache since order changed
+    routeCacheRef.current.clear();
+  }, []);
+
+  const handleMarkerClick = useCallback((destId: string) => {
+    setHighlightedId(destId);
+    // Auto-show sidebar on mobile when a marker is clicked
+    setShowSidebar(true);
+  }, []);
+
+  const handleImportDestinations = useCallback((imported: Destination[]) => {
+    setDestinations(imported);
+    routeCacheRef.current.clear();
+  }, []);
+
+  return (
+    <div className="flex flex-1 overflow-hidden relative">
+      {/* Mobile sidebar toggle */}
+      <button
+        type="button"
+        onClick={() => setShowSidebar((v) => !v)}
+        className="lg:hidden fixed bottom-4 left-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-terracotta text-white shadow-lg hover:bg-terracotta-dark transition-colors cursor-pointer"
+        aria-label={showSidebar ? "Hide sidebar" : "Show sidebar"}
+      >
+        {showSidebar ? <PanelLeftClose size={20} /> : <MapIcon size={20} />}
+      </button>
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          ${showSidebar ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0 transition-transform duration-300 ease-in-out
+          fixed lg:relative inset-y-0 left-0 top-16 lg:top-0 z-30
+          w-full sm:w-[400px] lg:w-[400px] flex-shrink-0
+          flex flex-col bg-cream border-r border-border
+          overflow-hidden
+        `}
+      >
+        {/* Desktop sidebar collapse button */}
+        <button
+          type="button"
+          onClick={() => setShowSidebar((v) => !v)}
+          className="hidden lg:flex absolute top-3 right-3 z-10 h-8 w-8 items-center justify-center rounded-md text-muted hover:text-charcoal hover:bg-stone-light transition-colors cursor-pointer"
+          aria-label="Toggle sidebar"
+        >
+          {showSidebar ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+        </button>
+
+        <div className="flex flex-col h-full overflow-hidden">
+          {/* Title */}
+          <div className="px-5 pt-5 pb-2">
+            <TripTitle tripId={trip.id} initialTitle={trip.title} />
+          </div>
+
+          {/* Search */}
+          <div className="px-5 pb-3">
+            <PlaceSearch
+              tripId={trip.id}
+              onDestinationAdded={handleDestinationAdded}
+            />
+          </div>
+
+          {/* Destination list */}
+          <div className="flex-1 overflow-y-auto px-5 pb-3">
+            <DestinationList
+              tripId={trip.id}
+              destinations={destinations}
+              routes={routes}
+              highlightedId={highlightedId}
+              onReorder={handleDestinationsReordered}
+              onRemove={handleDestinationRemoved}
+              onHighlight={setHighlightedId}
+            />
+          </div>
+
+          {/* Bottom bar */}
+          <div className="border-t border-border px-5 py-4 space-y-3">
+            <TotalDriveTime
+              routes={routes}
+              destinationCount={destinations.length}
+            />
+            <TripActions
+              trip={trip}
+              destinations={destinations}
+              onImportComplete={handleImportDestinations}
+            />
+          </div>
+        </div>
+      </aside>
+
+      {/* Backdrop for mobile sidebar */}
+      {showSidebar && (
+        <div
+          className="lg:hidden fixed inset-0 top-16 z-20 bg-charcoal/40 backdrop-blur-sm"
+          onClick={() => setShowSidebar(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Map */}
+      <div className="flex-1 relative">
+        <TripMap
+          destinations={destinations}
+          routes={routes}
+          highlightedId={highlightedId}
+          onMarkerClick={handleMarkerClick}
+        />
+      </div>
+    </div>
+  );
+}
+
+export { TripEditor };
