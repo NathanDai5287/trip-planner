@@ -16,6 +16,7 @@ import { nanoid } from "nanoid";
 import type { Trip, Destination } from "./types";
 
 function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
+  const rawDestinations = (data.destinations as Destination[]) || [];
   return {
     id,
     title: data.title as string,
@@ -23,7 +24,11 @@ function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
     shareSlug: (data.shareSlug as string) || null,
     isPublic: (data.isPublic as boolean) || false,
     userId: data.userId as string,
-    destinations: (data.destinations as Destination[]) || [],
+    destinations: rawDestinations.map((d) => ({
+      ...d,
+      dayIndex: d.dayIndex ?? 0,
+    })),
+    totalDays: (data.totalDays as number) ?? 1,
     createdAt: (data.createdAt as { toDate(): Date })?.toDate?.() || new Date(),
     updatedAt: (data.updatedAt as { toDate(): Date })?.toDate?.() || new Date(),
   };
@@ -43,6 +48,7 @@ export async function createTrip(
     isPublic: false,
     userId,
     destinations: [],
+    totalDays: 1,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -127,6 +133,7 @@ export async function addDestination(
     lng: data.lng,
     notes: "",
     sortOrder: trip.destinations.length,
+    dayIndex: Math.max(0, trip.totalDays - 1),
   };
 
   await updateDoc(doc(db, "trips", tripId), {
@@ -165,20 +172,76 @@ export async function updateDestinationNotes(
 
 export async function reorderDestinations(
   tripId: string,
-  orderedIds: string[],
+  orderedItems: { id: string; dayIndex: number }[],
 ) {
   const trip = await getTrip(tripId);
   if (!trip) throw new Error("Trip not found");
 
-  const reordered = orderedIds
-    .map((id, index) => {
-      const dest = trip.destinations.find((d) => d.id === id);
-      return dest ? { ...dest, sortOrder: index } : null;
+  const reordered = orderedItems
+    .map((item, index) => {
+      const dest = trip.destinations.find((d) => d.id === item.id);
+      return dest ? { ...dest, sortOrder: index, dayIndex: item.dayIndex } : null;
     })
     .filter((d): d is Destination => d !== null);
 
   await updateDoc(doc(db, "trips", tripId), {
     destinations: reordered,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ── Day management ──
+
+export async function addDay(tripId: string): Promise<number> {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new Error("Trip not found");
+
+  const newTotalDays = trip.totalDays + 1;
+  await updateDoc(doc(db, "trips", tripId), {
+    totalDays: newTotalDays,
+    updatedAt: serverTimestamp(),
+  });
+  return newTotalDays;
+}
+
+export async function removeDay(tripId: string, dayIndex: number) {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new Error("Trip not found");
+
+  if (trip.totalDays <= 1) throw new Error("Cannot remove the only day");
+
+  const targetDay = dayIndex > 0 ? dayIndex - 1 : 1;
+  const updatedDestinations = trip.destinations.map((d) => {
+    if (d.dayIndex === dayIndex) {
+      return { ...d, dayIndex: targetDay };
+    }
+    if (d.dayIndex > dayIndex) {
+      return { ...d, dayIndex: d.dayIndex - 1 };
+    }
+    return d;
+  });
+
+  await updateDoc(doc(db, "trips", tripId), {
+    destinations: updatedDestinations,
+    totalDays: trip.totalDays - 1,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function insertDayBefore(tripId: string, dayIndex: number) {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new Error("Trip not found");
+
+  const updatedDestinations = trip.destinations.map((d) => {
+    if (d.dayIndex >= dayIndex) {
+      return { ...d, dayIndex: d.dayIndex + 1 };
+    }
+    return d;
+  });
+
+  await updateDoc(doc(db, "trips", tripId), {
+    destinations: updatedDestinations,
+    totalDays: trip.totalDays + 1,
     updatedAt: serverTimestamp(),
   });
 }
