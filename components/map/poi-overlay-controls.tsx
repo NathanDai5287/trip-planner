@@ -47,7 +47,7 @@ function loadDataset(type: DatasetKey): Promise<PointOfInterest[]> {
         geometry: { coordinates: [number, number] };
         properties: Record<string, unknown>;
       }[]).map((f, i) => ({
-        id: String(f.properties.id ?? f.properties.slug ?? i),
+        id: `${type}-${i}`,  // index guarantees uniqueness for React keys
         name: String(f.properties.name),
         type,
         lat: f.geometry.coordinates[1],
@@ -104,11 +104,15 @@ function POIOverlayControls({
   publicLandsLoading,
 }: POIOverlayControlsProps) {
   const [activeTypes, setActiveTypes] = useState<Set<POIType>>(new Set());
+  const activeTypesRef = useRef<Set<POIType>>(new Set());
   const [radiusMiles, setRadiusMiles] = useState(15);
 
   // Per-type filtered results and the bbox key they were computed for
   const filteredRef = useRef<Record<DatasetKey, PointOfInterest[]>>({ gym: [], library: [], peak: [] });
   const bboxKeyRef = useRef<string>("");
+
+  // Keep ref in sync so async callbacks always read the latest activeTypes
+  useEffect(() => { activeTypesRef.current = activeTypes; }, [activeTypes]);
 
   const hasRoute = destinations.length >= 2;
 
@@ -128,10 +132,10 @@ function POIOverlayControls({
   }, []);
 
   const emitVisible = useCallback(
-    (active: Set<POIType>) => {
+    () => {
       const visible: PointOfInterest[] = [];
       for (const type of (["gym", "library", "peak"] as DatasetKey[])) {
-        if (active.has(type)) visible.push(...filteredRef.current[type]);
+        if (activeTypesRef.current.has(type)) visible.push(...filteredRef.current[type]);
       }
       onPoisChange(visible);
     },
@@ -143,7 +147,7 @@ function POIOverlayControls({
     if (!hasRoute || routeCoordinates.length < 2) {
       filteredRef.current = { gym: [], library: [], peak: [] };
       bboxKeyRef.current = "";
-      emitVisible(activeTypes);
+      emitVisible();
       return;
     }
 
@@ -157,12 +161,12 @@ function POIOverlayControls({
       if (_datasets[type]) {
         filteredRef.current[type] = filterByBbox(_datasets[type]!, bbox);
         bboxKeyRef.current = key;
-        emitVisible(activeTypes);
+        emitVisible();
       } else {
         loadDataset(type).then((all) => {
           filteredRef.current[type] = filterByBbox(all, bbox);
           bboxKeyRef.current = key;
-          emitVisible(activeTypes);
+          emitVisible();
         });
       }
     }
@@ -170,7 +174,7 @@ function POIOverlayControls({
 
   // Re-emit when active types change
   useEffect(() => {
-    emitVisible(activeTypes);
+    emitVisible();
   }, [activeTypes, emitVisible]);
 
   return (
