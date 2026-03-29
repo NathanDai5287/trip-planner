@@ -248,7 +248,7 @@ function TripEditor({ trip }: TripEditorProps) {
       try {
         const dest = await addDestination(trip.id, {
           name: poi.name,
-          address: `${poi.type === "gym" ? "Gym" : "Library"} — ${poi.name}`,
+          address: `${poi.type === "gym" ? "Gym" : poi.type === "peak" ? "Peak" : "Library"} — ${poi.name}`,
           lat: poi.lat,
           lng: poi.lng,
         });
