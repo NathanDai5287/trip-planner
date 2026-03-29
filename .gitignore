@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw GIS source data (large, not needed in repo)
+raw-data/
+scripts/.venv

@@ -10,8 +10,14 @@ import {
   NavigationControl,
   type MapRef,
 } from "react-map-gl/maplibre";
+import { addProtocol } from "maplibre-gl";
+import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Tent, Dumbbell, BookOpen } from "lucide-react";
+
+// Register PMTiles protocol once at module load
+const pmtilesProtocol = new Protocol();
+addProtocol("pmtiles", pmtilesProtocol.tile.bind(pmtilesProtocol));
 import type { Destination, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 import { POIOverlayControls } from "./poi-overlay-controls";
@@ -65,6 +71,7 @@ function TripMap({
   const mapRef = useRef<MapRef>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedPOI, setSelectedPOI] = useState<PointOfInterest | null>(null);
+  const [showPublicLands, setShowPublicLands] = useState(false);
 
   // Fit bounds when destinations change
   useEffect(() => {
@@ -240,6 +247,63 @@ function TripMap({
           <POIPopup poi={selectedPOI} onAddToTrip={handleAddPOIFromPopup} />
         </Popup>
       )}
+
+      {/* Public lands (BLM/USFS) layer */}
+      <Source
+        id="public-lands"
+        type="vector"
+        url="pmtiles:///data/public_lands.pmtiles"
+      >
+        <Layer
+          id="public-lands-fill"
+          type="fill"
+          source-layer="public_lands"
+          layout={{ visibility: showPublicLands ? "visible" : "none" }}
+          paint={{
+            "fill-color": [
+              "match", ["get", "manager"],
+              "BLM", "#d97706",
+              "USFS", "#16a34a",
+              "#94a3b8",
+            ],
+            "fill-opacity": 0.2,
+          }}
+        />
+        <Layer
+          id="public-lands-outline"
+          type="line"
+          source-layer="public_lands"
+          layout={{ visibility: showPublicLands ? "visible" : "none" }}
+          paint={{
+            "line-color": [
+              "match", ["get", "manager"],
+              "BLM", "#d97706",
+              "USFS", "#16a34a",
+              "#94a3b8",
+            ],
+            "line-width": 1,
+            "line-opacity": 0.6,
+          }}
+        />
+      </Source>
+
+      {/* Public lands toggle */}
+      <div className="absolute top-3 left-3 z-10">
+        <button
+          onClick={() => setShowPublicLands((v) => !v)}
+          className={`
+            flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow
+            border transition-colors
+            ${showPublicLands
+              ? "bg-green-700 text-white border-green-500"
+              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }
+          `}
+        >
+          <Tent size={12} />
+          Public Lands
+        </button>
+      </div>
 
       {/* POI overlay controls */}
       <POIOverlayControls
