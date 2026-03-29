@@ -8,11 +8,13 @@ export const importDestinationSchema = z.object({
   lng: z.number().min(-180).max(180),
   notes: z.string().optional().default(""),
   order: z.number().int().min(0),
+  dayIndex: z.number().int().min(0).optional().default(0),
 });
 
 export const importTripSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().nullable(),
+  totalDays: z.number().int().min(1).optional().default(1),
   destinations: z.array(importDestinationSchema),
   exportedAt: z.string().optional(),
   version: z.number().optional(),

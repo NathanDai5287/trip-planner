@@ -4,6 +4,7 @@ export function buildTripExport(trip: Trip) {
   return {
     title: trip.title,
     description: trip.description,
+    totalDays: trip.totalDays,
     destinations: trip.destinations
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((d) => ({
@@ -14,8 +15,9 @@ export function buildTripExport(trip: Trip) {
         lng: d.lng,
         notes: d.notes,
         order: d.sortOrder,
+        dayIndex: d.dayIndex,
       })),
     exportedAt: new Date().toISOString(),
-    version: 1,
+    version: 2,
   };
 }
