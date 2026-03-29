@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { Compass, LogOut } from "lucide-react";
-import { useSession, signOut } from "next-auth/react";
+import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 
 function Header() {
-  const { data: session, status } = useSession();
+  const { user, loading, signOut } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 bg-charcoal text-cream">
@@ -22,19 +22,25 @@ function Header() {
         </Link>
 
         <nav className="flex items-center gap-4">
-          {status === "loading" && (
+          {loading && (
             <div className="h-4 w-24 animate-shimmer rounded" />
           )}
 
-          {status === "authenticated" && session?.user && (
+          {!loading && user && (
             <>
+              <Link
+                href="/dashboard"
+                className="text-sm text-stone-light hover:text-cream transition-colors"
+              >
+                My Trips
+              </Link>
               <span className="hidden text-sm text-stone-light sm:block">
-                {session.user.email}
+                {user.displayName || user.email}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => signOut({ callbackUrl: "/" })}
+                onClick={signOut}
                 className="text-stone-light hover:text-cream hover:bg-ink"
               >
                 <LogOut size={16} />
@@ -43,20 +49,12 @@ function Header() {
             </>
           )}
 
-          {status === "unauthenticated" && (
-            <>
-              <Link
-                href="/login"
-                className="text-sm text-stone-light hover:text-cream transition-colors"
-              >
+          {!loading && !user && (
+            <Link href="/login">
+              <Button variant="primary" size="sm">
                 Sign In
-              </Link>
-              <Link href="/signup">
-                <Button variant="primary" size="sm">
-                  Get Started
-                </Button>
-              </Link>
-            </>
+              </Button>
+            </Link>
           )}
         </nav>
       </div>

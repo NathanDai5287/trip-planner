@@ -5,18 +5,10 @@ import { useState } from "react";
 import { MapPin, Calendar, Share2, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { DeleteTripDialog } from "@/components/dashboard/delete-trip-dialog";
+import type { Trip } from "@/lib/types";
 
 interface TripCardProps {
-  trip: {
-    id: string;
-    title: string;
-    description: string | null;
-    isPublic: boolean;
-    createdAt: Date;
-    _count: {
-      destinations: number;
-    };
-  };
+  trip: Trip;
 }
 
 function formatDate(date: Date): string {
@@ -29,6 +21,7 @@ function formatDate(date: Date): string {
 
 function TripCard({ trip }: TripCardProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const destCount = trip.destinations.length;
 
   return (
     <>
@@ -58,8 +51,7 @@ function TripCard({ trip }: TripCardProps) {
           <div className="mt-4 flex items-center gap-4 text-xs text-muted font-body">
             <span className="inline-flex items-center gap-1.5">
               <MapPin size={14} className="text-terracotta" />
-              {trip._count.destinations}{" "}
-              {trip._count.destinations === 1 ? "destination" : "destinations"}
+              {destCount} {destCount === 1 ? "destination" : "destinations"}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Calendar size={14} className="text-terracotta" />

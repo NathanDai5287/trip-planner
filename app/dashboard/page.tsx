@@ -1,24 +1,37 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Compass } from "lucide-react";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { useAuth } from "@/components/auth-provider";
+import { getUserTrips } from "@/lib/firestore";
+import type { Trip } from "@/lib/types";
 import { Header } from "@/components/header";
 import { TripCard } from "@/components/dashboard/trip-card";
 import { NewTripButton } from "@/components/dashboard/new-trip-button";
 
-export const metadata = {
-  title: "Dashboard — Wayfinder",
-};
+export default function DashboardPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export default async function DashboardPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
 
-  const trips = await prisma.trip.findMany({
-    where: { userId: session.user.id },
-    include: { _count: { select: { destinations: true } } },
-    orderBy: { updatedAt: "desc" },
-  });
+    getUserTrips(user.uid).then((t) => {
+      setTrips(t);
+      setLoading(false);
+    });
+  }, [user, authLoading, router]);
+
+  if (authLoading || (!user && !loading)) {
+    return null;
+  }
 
   return (
     <>
@@ -31,16 +44,26 @@ export default async function DashboardPage() {
               Your Trips
             </h1>
             <p className="mt-1 text-sm text-muted font-body">
-              {trips.length === 0
-                ? "Plan your first adventure"
-                : `${trips.length} ${trips.length === 1 ? "trip" : "trips"} planned`}
+              {loading
+                ? "Loading..."
+                : trips.length === 0
+                  ? "Plan your first adventure"
+                  : `${trips.length} ${trips.length === 1 ? "trip" : "trips"} planned`}
             </p>
           </div>
           <NewTripButton />
         </div>
 
-        {/* Trip grid or empty state */}
-        {trips.length > 0 ? (
+        {loading ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-40 rounded-xl border border-border bg-stone-light/50 animate-shimmer"
+              />
+            ))}
+          </div>
+        ) : trips.length > 0 ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 stagger-children">
             {trips.map((trip) => (
               <TripCard key={trip.id} trip={trip} />

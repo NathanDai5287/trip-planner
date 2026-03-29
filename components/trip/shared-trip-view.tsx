@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import type { Trip, Destination } from "@prisma/client";
+import type { Trip, Destination } from "@/lib/types";
 import {
   Compass,
   Map as MapIcon,
@@ -139,7 +139,7 @@ function SharedTripView({ trip }: SharedTripViewProps) {
             </span>
           </div>
 
-          <Link href="/signup">
+          <Link href="/dashboard">
             <Button
               variant="primary"
               size="sm"

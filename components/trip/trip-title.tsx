@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Pencil } from "lucide-react";
 import toast from "react-hot-toast";
-import { updateTrip } from "@/app/actions/trips";
+import { updateTripFields } from "@/lib/firestore";
 
 interface TripTitleProps {
   tripId: string;
@@ -22,7 +22,7 @@ function TripTitle({ tripId, initialTitle }: TripTitleProps) {
       if (!trimmed || trimmed === initialTitle) return;
 
       try {
-        await updateTrip(tripId, { title: trimmed });
+        await updateTripFields(tripId, { title: trimmed });
       } catch {
         toast.error("Failed to update title");
         setTitle(initialTitle);

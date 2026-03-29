@@ -17,10 +17,10 @@ import {
   sortableKeyboardCoordinates,
   arrayMove,
 } from "@dnd-kit/sortable";
-import type { Destination } from "@prisma/client";
+import type { Destination } from "@/lib/types";
 import { MapPin } from "lucide-react";
 import toast from "react-hot-toast";
-import { reorderDestinations } from "@/app/actions/destinations";
+import { reorderDestinations } from "@/lib/firestore";
 import { DestinationCard } from "./destination-card";
 import type { RouteSegment } from "./trip-editor";
 
@@ -34,7 +34,6 @@ interface DestinationListProps {
   onHighlight: (destId: string | null) => void;
 }
 
-// Custom modifier to restrict drag to vertical axis
 const restrictToVerticalAxis: Modifier = ({ transform }) => {
   return {
     ...transform,
@@ -85,7 +84,6 @@ function DestinationList({
           reordered.map((d) => d.id),
         );
       } catch {
-        // Revert on failure
         onReorder(destinations);
         toast.error("Failed to reorder destinations");
       }

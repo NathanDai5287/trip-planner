@@ -1,49 +1,43 @@
-import { prisma } from "@/lib/db";
-import { notFound } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { getSharedTrip } from "@/lib/firestore";
+import type { Trip } from "@/lib/types";
 import { SharedTripView } from "@/components/trip/shared-trip-view";
-import type { Metadata } from "next";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
-  const { slug } = await params;
-  const trip = await prisma.trip.findUnique({
-    where: { shareSlug: slug, isPublic: true },
-    include: { destinations: { orderBy: { sortOrder: "asc" } } },
-  });
+export default function SharedTripPage() {
+  const { slug } = useParams<{ slug: string }>();
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!trip) return { title: "Trip Not Found" };
+  useEffect(() => {
+    getSharedTrip(slug).then((t) => {
+      setTrip(t);
+      setLoading(false);
+    });
+  }, [slug]);
 
-  const stopCount = trip.destinations.length;
-  const description =
-    trip.description ||
-    `A road trip with ${stopCount} ${stopCount === 1 ? "destination" : "destinations"}`;
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-cream">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-stone border-t-terracotta" />
+      </div>
+    );
+  }
 
-  return {
-    title: `${trip.title} — Wayfinder`,
-    description,
-    openGraph: {
-      title: `${trip.title} — Wayfinder`,
-      description,
-      type: "website",
-    },
-  };
-}
-
-export default async function SharedTripPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const trip = await prisma.trip.findUnique({
-    where: { shareSlug: slug, isPublic: true },
-    include: { destinations: { orderBy: { sortOrder: "asc" } } },
-  });
-
-  if (!trip) notFound();
+  if (!trip) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-cream text-center px-4">
+        <h1 className="font-display text-2xl font-semibold text-charcoal">
+          Trip not found
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          This trip may have been removed or is no longer shared.
+        </p>
+      </div>
+    );
+  }
 
   return <SharedTripView trip={trip} />;
 }

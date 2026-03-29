@@ -54,14 +54,9 @@ export default function LandingPage() {
           </p>
 
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link href="/signup">
+            <Link href="/dashboard">
               <Button variant="primary" size="lg">
                 Start Planning
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button variant="secondary" size="lg">
-                Sign In
               </Button>
             </Link>
           </div>
@@ -117,12 +112,12 @@ export default function LandingPage() {
             Ready to Hit the Road?
           </h2>
           <p className="mx-auto mt-4 max-w-md text-base text-stone font-body">
-            Create a free account and start mapping your next adventure in minutes.
+            Start mapping your next adventure in minutes.
           </p>
           <div className="mt-8">
-            <Link href="/signup">
+            <Link href="/dashboard">
               <Button variant="primary" size="lg">
-                Get Started Free
+                Get Started
               </Button>
             </Link>
           </div>

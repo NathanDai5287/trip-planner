@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Trip, Destination } from "@prisma/client";
+import type { Trip, Destination } from "@/lib/types";
 import { Map as MapIcon, PanelLeftClose, PanelLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { decodePolyline } from "@/lib/polyline";
@@ -12,8 +12,6 @@ import { TripActions } from "./trip-actions";
 import { TotalDriveTime } from "./total-drive-time";
 import { TripMap } from "@/components/map/trip-map";
 
-type TripWithDestinations = Trip & { destinations: Destination[] };
-
 export type RouteSegment = {
   fromId: string;
   toId: string;
@@ -22,7 +20,7 @@ export type RouteSegment = {
 };
 
 interface TripEditorProps {
-  trip: TripWithDestinations;
+  trip: Trip;
 }
 
 function TripEditor({ trip }: TripEditorProps) {
@@ -36,7 +34,6 @@ function TripEditor({ trip }: TripEditorProps) {
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchRoutes = useCallback(async (dests: Destination[]) => {
-    // Cancel any in-flight route fetching
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -79,7 +76,6 @@ function TripEditor({ trip }: TripEditorProps) {
         if (data.routes && data.routes.length > 0) {
           const osrmRoute = data.routes[0];
           const decoded = decodePolyline(osrmRoute.geometry);
-          // Polyline returns [lat, lng], GeoJSON needs [lng, lat]
           const geometry: [number, number][] = decoded.map(([lat, lng]) => [
             lng,
             lat,
@@ -98,10 +94,8 @@ function TripEditor({ trip }: TripEditorProps) {
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Failed to fetch route:", err);
-        // Continue without this route segment
       }
 
-      // Rate limit: wait 1s between requests
       if (!controller.signal.aborted) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -128,7 +122,6 @@ function TripEditor({ trip }: TripEditorProps) {
 
   const handleDestinationRemoved = useCallback((destId: string) => {
     setDestinations((prev) => prev.filter((d) => d.id !== destId));
-    // Invalidate route cache entries involving this destination
     routeCacheRef.current.forEach((_, key) => {
       if (key.includes(destId)) {
         routeCacheRef.current.delete(key);
@@ -138,13 +131,11 @@ function TripEditor({ trip }: TripEditorProps) {
 
   const handleDestinationsReordered = useCallback((reordered: Destination[]) => {
     setDestinations(reordered);
-    // Invalidate full route cache since order changed
     routeCacheRef.current.clear();
   }, []);
 
   const handleMarkerClick = useCallback((destId: string) => {
     setHighlightedId(destId);
-    // Auto-show sidebar on mobile when a marker is clicked
     setShowSidebar(true);
   }, []);
 
@@ -176,7 +167,6 @@ function TripEditor({ trip }: TripEditorProps) {
           overflow-hidden
         `}
       >
-        {/* Desktop sidebar collapse button */}
         <button
           type="button"
           onClick={() => setShowSidebar((v) => !v)}
@@ -187,12 +177,10 @@ function TripEditor({ trip }: TripEditorProps) {
         </button>
 
         <div className="flex flex-col h-full overflow-hidden">
-          {/* Title */}
           <div className="px-5 pt-5 pb-2">
             <TripTitle tripId={trip.id} initialTitle={trip.title} />
           </div>
 
-          {/* Search */}
           <div className="px-5 pb-3">
             <PlaceSearch
               tripId={trip.id}
@@ -200,7 +188,6 @@ function TripEditor({ trip }: TripEditorProps) {
             />
           </div>
 
-          {/* Destination list */}
           <div className="flex-1 overflow-y-auto px-5 pb-3">
             <DestinationList
               tripId={trip.id}
@@ -213,7 +200,6 @@ function TripEditor({ trip }: TripEditorProps) {
             />
           </div>
 
-          {/* Bottom bar */}
           <div className="border-t border-border px-5 py-4 space-y-3">
             <TotalDriveTime
               routes={routes}
@@ -228,7 +214,6 @@ function TripEditor({ trip }: TripEditorProps) {
         </div>
       </aside>
 
-      {/* Backdrop for mobile sidebar */}
       {showSidebar && (
         <div
           className="lg:hidden fixed inset-0 top-16 z-20 bg-charcoal/40 backdrop-blur-sm"
@@ -237,7 +222,6 @@ function TripEditor({ trip }: TripEditorProps) {
         />
       )}
 
-      {/* Map */}
       <div className="flex-1 relative">
         <TripMap
           destinations={destinations}

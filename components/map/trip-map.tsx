@@ -10,7 +10,7 @@ import {
   type MapRef,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Destination } from "@prisma/client";
+import type { Destination } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 
 const MAP_STYLE = {

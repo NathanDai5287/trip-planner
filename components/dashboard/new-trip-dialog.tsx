@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { createTrip } from "@/app/actions/trips";
+import { useAuth } from "@/components/auth-provider";
+import { createTrip } from "@/lib/firestore";
 
 interface NewTripDialogProps {
   open: boolean;
@@ -14,16 +16,32 @@ interface NewTripDialogProps {
 function NewTripDialog({ open, onClose }: NewTripDialogProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
 
-  function handleSubmit(formData: FormData) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!user) return;
+
+    const formData = new FormData(e.currentTarget);
+    const title = (formData.get("title") as string)?.trim();
+    const description = (formData.get("description") as string)?.trim() || null;
+
+    if (!title) {
+      setError("Title is required");
+      return;
+    }
+
     setError(null);
-    startTransition(async () => {
-      const result = await createTrip(formData);
-      if (result?.error) {
-        setError(result.error);
-      }
-    });
+    setIsPending(true);
+    try {
+      const tripId = await createTrip(user.uid, title, description);
+      router.push(`/trip/${tripId}`);
+    } catch {
+      setError("Failed to create trip");
+      setIsPending(false);
+    }
   }
 
   function handleClose() {
@@ -34,7 +52,7 @@ function NewTripDialog({ open, onClose }: NewTripDialogProps) {
 
   return (
     <Modal open={open} onClose={handleClose} title="New Trip">
-      <form ref={formRef} action={handleSubmit} className="flex flex-col gap-4">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           label="Trip Title"
           name="title"

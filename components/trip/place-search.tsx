@@ -3,8 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Search, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
-import type { Destination } from "@prisma/client";
-import { addDestination } from "@/app/actions/destinations";
+import type { Destination } from "@/lib/types";
+import { addDestination } from "@/lib/firestore";
 
 interface NominatimResult {
   place_id: number;
@@ -72,7 +72,6 @@ function PlaceSearch({ tripId, onDestinationAdded }: PlaceSearchProps) {
     };
   }, []);
 
-  // Close dropdown on click outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (

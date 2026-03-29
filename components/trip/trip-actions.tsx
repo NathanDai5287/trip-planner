@@ -1,23 +1,24 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Download, Upload, Share2, Link, Check, Trash2 } from "lucide-react";
-import type { Trip, Destination } from "@prisma/client";
+import type { Trip, Destination } from "@/lib/types";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { buildTripExport } from "@/lib/export";
 import { importTripSchema } from "@/lib/import-schema";
-import { toggleSharing, deleteTrip } from "@/app/actions/trips";
-import { addDestination } from "@/app/actions/destinations";
+import { toggleSharing, deleteTrip, addDestination } from "@/lib/firestore";
 
 interface TripActionsProps {
-  trip: Trip & { destinations: Destination[] };
+  trip: Trip;
   destinations: Destination[];
   onImportComplete: (destinations: Destination[]) => void;
 }
 
 function TripActions({ trip, destinations, onImportComplete }: TripActionsProps) {
+  const router = useRouter();
   const [isShared, setIsShared] = useState(trip.isPublic);
   const [shareSlug, setShareSlug] = useState(trip.shareSlug);
   const [isTogglingShare, setIsTogglingShare] = useState(false);
@@ -83,7 +84,6 @@ function TripActions({ trip, destinations, onImportComplete }: TripActionsProps)
         }
       } finally {
         setIsImporting(false);
-        // Reset file input
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
@@ -123,11 +123,12 @@ function TripActions({ trip, destinations, onImportComplete }: TripActionsProps)
     setIsDeleting(true);
     try {
       await deleteTrip(trip.id);
+      router.push("/dashboard");
     } catch {
       toast.error("Failed to delete trip");
       setIsDeleting(false);
     }
-  }, [trip.id]);
+  }, [trip.id, router]);
 
   return (
     <>

@@ -1,23 +1,39 @@
 "use client";
 
-import { useActionState } from "react";
-import Link from "next/link";
-import { login } from "@/app/actions/auth";
-
-type FormState = { error?: string } | undefined;
-
-async function loginAction(
-  _prev: FormState,
-  formData: FormData
-): Promise<FormState> {
-  return await login(formData);
-}
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider } from "@/lib/firebase";
+import { useAuth } from "@/components/auth-provider";
+import { Compass } from "lucide-react";
 
 export default function LoginPage() {
-  const [state, dispatch, isPending] = useActionState<FormState, FormData>(
-    loginAction,
-    undefined
-  );
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
+  // Redirect if already signed in
+  if (!loading && user) {
+    router.replace("/dashboard");
+    return null;
+  }
+
+  async function handleGoogleSignIn() {
+    setError(null);
+    setIsPending(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      router.push("/dashboard");
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code !== "auth/popup-closed-by-user") {
+        setError("Failed to sign in. Please try again.");
+      }
+    } finally {
+      setIsPending(false);
+    }
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-cream topo-pattern px-4">
@@ -25,118 +41,46 @@ export default function LoginPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-terracotta/10 mb-4">
-            <svg
-              className="w-7 h-7 text-terracotta"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z"
-              />
-            </svg>
+            <Compass size={28} className="text-terracotta" />
           </div>
           <h1 className="font-display text-3xl font-semibold text-charcoal tracking-tight">
-            Welcome back
+            Welcome to Wayfinder
           </h1>
           <p className="mt-2 text-muted text-sm">
-            Sign in to continue your expedition
+            Sign in to plan your next expedition
           </p>
         </div>
 
         {/* Card */}
         <div className="bg-white/80 backdrop-blur-sm border border-border rounded-[var(--radius)] shadow-sm p-8">
-          <form action={dispatch} className="space-y-5">
-            {state?.error && (
-              <div className="rounded-[var(--radius)] bg-danger/5 border border-danger/20 px-4 py-3 text-sm text-danger">
-                {state.error}
-              </div>
-            )}
-
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-charcoal mb-1.5"
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="explorer@expedition.co"
-                className="w-full rounded-[var(--radius)] border border-border bg-stone-light/50 px-4 py-2.5 text-sm text-charcoal placeholder:text-muted/60 transition-colors focus:border-terracotta focus:bg-white focus:outline-none focus:ring-2 focus:ring-terracotta/20"
-              />
+          {error && (
+            <div className="rounded-[var(--radius)] bg-danger/5 border border-danger/20 px-4 py-3 text-sm text-danger mb-5">
+              {error}
             </div>
+          )}
 
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-charcoal mb-1.5"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                placeholder="••••••••"
-                className="w-full rounded-[var(--radius)] border border-border bg-stone-light/50 px-4 py-2.5 text-sm text-charcoal placeholder:text-muted/60 transition-colors focus:border-terracotta focus:bg-white focus:outline-none focus:ring-2 focus:ring-terracotta/20"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isPending}
-              className="w-full rounded-[var(--radius)] bg-terracotta px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-terracotta-dark focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isPending ? (
-                <span className="inline-flex items-center gap-2">
-                  <svg
-                    className="h-4 w-4 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                "Sign in"
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Footer link */}
-        <p className="mt-6 text-center text-sm text-muted">
-          Don&apos;t have an account?{" "}
-          <Link
-            href="/signup"
-            className="font-medium text-terracotta hover:text-terracotta-dark transition-colors"
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={isPending || loading}
+            className="w-full flex items-center justify-center gap-3 rounded-[var(--radius)] border border-border bg-white px-4 py-3 text-sm font-medium text-charcoal shadow-sm transition-all hover:bg-stone-light focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
-            Create one
-          </Link>
-        </p>
+            {isPending ? (
+              <svg className="h-5 w-5 animate-spin text-muted" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" viewBox="0 0 24 24">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+              </svg>
+            )}
+            {isPending ? "Signing in..." : "Continue with Google"}
+          </button>
+        </div>
       </div>
     </div>
   );

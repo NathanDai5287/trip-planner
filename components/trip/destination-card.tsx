@@ -4,9 +4,9 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Trash2, ChevronDown, ChevronUp } from "lucide-react";
-import type { Destination } from "@prisma/client";
+import type { Destination } from "@/lib/types";
 import toast from "react-hot-toast";
-import { removeDestination, updateDestinationNotes } from "@/app/actions/destinations";
+import { removeDestination, updateDestinationNotes } from "@/lib/firestore";
 import { DriveTimeBadge } from "./drive-time-badge";
 
 interface DestinationCardProps {
@@ -50,7 +50,7 @@ function DestinationCard({
   const saveNotes = useCallback(
     async (value: string) => {
       try {
-        await updateDestinationNotes(destination.id, tripId, value);
+        await updateDestinationNotes(tripId, destination.id, value);
       } catch {
         toast.error("Failed to save notes");
       }
@@ -78,7 +78,7 @@ function DestinationCard({
   const handleDelete = useCallback(async () => {
     setIsDeleting(true);
     try {
-      await removeDestination(destination.id, tripId);
+      await removeDestination(tripId, destination.id);
       onRemove(destination.id);
       toast.success(`Removed ${destination.name}`);
     } catch {
@@ -109,7 +109,6 @@ function DestinationCard({
           }
         }}
       >
-        {/* Drag handle */}
         <button
           type="button"
           className="mt-1 shrink-0 cursor-grab active:cursor-grabbing text-muted hover:text-charcoal transition-colors touch-none"
@@ -120,12 +119,10 @@ function DestinationCard({
           <GripVertical size={16} />
         </button>
 
-        {/* Number badge */}
         <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
           {index + 1}
         </div>
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-charcoal truncate">
             {destination.name}
@@ -140,7 +137,6 @@ function DestinationCard({
             </div>
           )}
 
-          {/* Notes toggle */}
           <button
             type="button"
             onClick={(e) => {
@@ -154,7 +150,6 @@ function DestinationCard({
           </button>
         </div>
 
-        {/* Delete button */}
         <button
           type="button"
           onClick={(e) => {
@@ -169,7 +164,6 @@ function DestinationCard({
         </button>
       </div>
 
-      {/* Notes section */}
       {showNotes && (
         <div className="ml-12 mr-8 mt-1 animate-fade-in">
           <textarea

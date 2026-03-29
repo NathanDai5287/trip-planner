@@ -1,6 +1,6 @@
-import type { Trip, Destination } from "@prisma/client";
+import type { Trip } from "./types";
 
-export function buildTripExport(trip: Trip & { destinations: Destination[] }) {
+export function buildTripExport(trip: Trip) {
   return {
     title: trip.title,
     description: trip.description,

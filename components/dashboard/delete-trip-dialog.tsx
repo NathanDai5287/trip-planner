@@ -1,9 +1,11 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { deleteTrip } from "@/app/actions/trips";
+import { deleteTrip } from "@/lib/firestore";
+import toast from "react-hot-toast";
 
 interface DeleteTripDialogProps {
   tripId: string;
@@ -18,12 +20,19 @@ function DeleteTripDialog({
   open,
   onClose,
 }: DeleteTripDialogProps) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
+  const router = useRouter();
 
-  function handleDelete() {
-    startTransition(async () => {
+  async function handleDelete() {
+    setIsPending(true);
+    try {
       await deleteTrip(tripId);
-    });
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      toast.error("Failed to delete trip");
+      setIsPending(false);
+    }
   }
 
   return (
