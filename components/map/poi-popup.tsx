@@ -1,6 +1,6 @@
 "use client";
 
-import { Tent, Dumbbell, BookOpen, Plus } from "lucide-react";
+import { Dumbbell, BookOpen, Plus } from "lucide-react";
 import type { PointOfInterest } from "@/lib/types";
 
 interface POIPopupProps {
@@ -9,7 +9,6 @@ interface POIPopupProps {
 }
 
 const TYPE_CONFIG = {
-  campsite: { icon: Tent, color: "text-green-600", label: "Campsite" },
   gym: { icon: Dumbbell, color: "text-blue-600", label: "Gym" },
   library: { icon: BookOpen, color: "text-orange-600", label: "Library" },
 } as const;
