@@ -21,8 +21,6 @@ const POI_OPTIONS: { type: POIType; label: string; icon: typeof Dumbbell; color:
   { type: "peak",    label: "Peaks",     icon: Mountain,   color: "text-emerald-700" },
 ];
 
-const MILES_TO_METERS = 1609.34;
-
 // ── Static dataset loaders (module-level, fetched once per session) ───────────
 
 type DatasetKey = "gym" | "library" | "peak";
@@ -61,22 +59,37 @@ function loadDataset(type: DatasetKey): Promise<PointOfInterest[]> {
   return _fetches[type]!;
 }
 
-// ── Bbox helpers ──────────────────────────────────────────────────────────────
+// ── Geometry helpers ──────────────────────────────────────────────────────────
 
-function metersToDegLat(m: number) { return m / 111_320; }
-function metersToDegLng(m: number, lat: number) {
-  return m / (111_320 * Math.cos((lat * Math.PI) / 180));
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Extract [lat, lng] sample from route geometry (max ~300 points for performance)
+function sampleRoutePoints(routes: RouteSegment[]): [number, number][] {
+  const all: [number, number][] = [];
+  for (const seg of routes) {
+    for (const [lng, lat] of seg.geometry) all.push([lat, lng]);
+  }
+  if (all.length <= 300) return all;
+  const step = Math.ceil(all.length / 300);
+  return all.filter((_, i) => i % step === 0);
 }
 
 function computeBbox(
-  coords: [number, number][],
-  radiusMeters: number,
+  points: [number, number][], // [lat, lng]
+  radiusKm: number,
 ): [number, number, number, number] {
-  const lats = coords.map(([lat]) => lat);
-  const lngs = coords.map(([, lng]) => lng);
+  const lats = points.map(([lat]) => lat);
+  const lngs = points.map(([, lng]) => lng);
   const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const padLat = metersToDegLat(radiusMeters);
-  const padLng = metersToDegLng(radiusMeters, centerLat);
+  const padLat = radiusKm / 111.32;
+  const padLng = radiusKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
   return [
     Math.min(...lats) - padLat,
     Math.min(...lngs) - padLng,
@@ -85,12 +98,18 @@ function computeBbox(
   ];
 }
 
-function filterByBbox(
+// First bbox pre-filter, then exact distance check against sampled route points
+function filterNearRoute(
   pois: PointOfInterest[],
   bbox: [number, number, number, number],
+  routePoints: [number, number][], // [lat, lng]
+  radiusKm: number,
 ): PointOfInterest[] {
   const [south, west, north, east] = bbox;
-  return pois.filter((p) => p.lat >= south && p.lat <= north && p.lng >= west && p.lng <= east);
+  return pois.filter((p) => {
+    if (p.lat < south || p.lat > north || p.lng < west || p.lng > east) return false;
+    return routePoints.some(([lat, lng]) => haversineKm(p.lat, p.lng, lat, lng) <= radiusKm);
+  });
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -116,11 +135,14 @@ function POIOverlayControls({
 
   const hasRoute = destinations.length >= 2;
 
-  const routeCoordinates: [number, number][] = [...destinations]
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((d) => [d.lat, d.lng]);
+  // Use actual route geometry points for accurate corridor filtering.
+  // Falls back to destination endpoints while routes are still loading.
+  const routePoints: [number, number][] = routes.length > 0
+    ? sampleRoutePoints(routes)
+    : [...destinations].sort((a, b) => a.sortOrder - b.sortOrder).map((d) => [d.lat, d.lng]);
 
-  const currentBboxKey = `${routeCoordinates.map(([a, b]) => `${a.toFixed(3)},${b.toFixed(3)}`).join("|")}@${radiusMiles}`;
+  const routeKey = routes.map((r) => `${r.fromId}-${r.toId}`).join("|");
+  const currentBboxKey = `${routeKey}@${radiusMiles}`;
 
   const toggleType = useCallback((type: POIType) => {
     setActiveTypes((prev) => {
@@ -142,9 +164,9 @@ function POIOverlayControls({
     [onPoisChange],
   );
 
-  // Refilter both datasets whenever route/radius changes
+  // Refilter all datasets whenever route or radius changes
   useEffect(() => {
-    if (!hasRoute || routeCoordinates.length < 2) {
+    if (!hasRoute || routePoints.length === 0) {
       filteredRef.current = { gym: [], library: [], peak: [] };
       bboxKeyRef.current = "";
       emitVisible();
@@ -153,18 +175,19 @@ function POIOverlayControls({
 
     if (bboxKeyRef.current === currentBboxKey) return;
 
-    const radiusMeters = Math.round(radiusMiles * MILES_TO_METERS);
-    const bbox = computeBbox(routeCoordinates, radiusMeters);
+    const radiusKm = radiusMiles * 1.60934;
+    const bbox = computeBbox(routePoints, radiusKm);
+    const pts = routePoints; // stable ref for async closures
     const key = currentBboxKey;
 
     for (const type of (["gym", "library", "peak"] as DatasetKey[])) {
       if (_datasets[type]) {
-        filteredRef.current[type] = filterByBbox(_datasets[type]!, bbox);
+        filteredRef.current[type] = filterNearRoute(_datasets[type]!, bbox, pts, radiusKm);
         bboxKeyRef.current = key;
         emitVisible();
       } else {
         loadDataset(type).then((all) => {
-          filteredRef.current[type] = filterByBbox(all, bbox);
+          filteredRef.current[type] = filterNearRoute(all, bbox, pts, radiusKm);
           bboxKeyRef.current = key;
           emitVisible();
         });

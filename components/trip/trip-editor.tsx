@@ -130,18 +130,17 @@ function TripEditor({ trip }: TripEditorProps) {
     }
   }, [trip.id]);
 
-  const isFirstMount = useRef(true);
   useEffect(() => {
-    if (isFirstMount.current) {
-      isFirstMount.current = false;
-      // Skip OSRM on load if all consecutive pairs are already cached
-      if (destinations.length >= 2) {
-        const sorted = [...destinations].sort((a, b) => a.sortOrder - b.sortOrder);
-        const allCached = sorted.slice(0, -1).every((d, i) =>
-          routeCacheRef.current.has(`${d.id}-${sorted[i + 1].id}`)
-        );
-        if (allCached) return;
-      } else {
+    if (destinations.length >= 2) {
+      const sorted = [...destinations].sort((a, b) => a.sortOrder - b.sortOrder);
+      const allCached = sorted.slice(0, -1).every((d, i) =>
+        routeCacheRef.current.has(`${d.id}-${sorted[i + 1].id}`)
+      );
+      if (allCached) {
+        // Reconstruct routes in the current order from cache (handles reorder)
+        setRoutes(sorted.slice(0, -1).map((d, i) =>
+          routeCacheRef.current.get(`${d.id}-${sorted[i + 1].id}`)!
+        ));
         return;
       }
     }
