@@ -219,63 +219,83 @@ function SharedTripView({ trip }: SharedTripViewProps) {
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {destinations.map((dest, index) => {
-                    const driveTime = getDriveTimeToNext(dest.id);
+                <div className="flex flex-col gap-1">
+                  {Array.from({ length: trip.totalDays }, (_, dayIndex) => {
+                    const dayDests = destinations
+                      .filter((d) => d.dayIndex === dayIndex)
+                      .sort((a, b) => a.sortOrder - b.sortOrder);
+
                     return (
-                      <div key={dest.id} className="flex flex-col">
-                        {/* Destination card (read-only) */}
-                        <div
-                          className={`
-                            flex items-start gap-3 rounded-lg border bg-cream p-3
-                            border-l-4 border-l-terracotta
-                            transition-all duration-200 cursor-pointer
-                            shadow-sm
-                            ${
-                              highlightedId === dest.id
-                                ? "ring-2 ring-terracotta/40 bg-stone-light"
-                                : "border-border hover:bg-stone-light/50"
-                            }
-                          `}
-                          onClick={() => setHighlightedId(dest.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setHighlightedId(dest.id);
-                            }
-                          }}
-                        >
-                          {/* Number badge */}
-                          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
-                            {index + 1}
+                      <div key={dayIndex}>
+                        {trip.totalDays > 1 && (
+                          <div className="flex items-center gap-2 pt-3 first:pt-0 pb-1">
+                            <h3 className="font-display text-sm font-semibold text-charcoal tracking-wide uppercase">
+                              Day {dayIndex + 1}
+                            </h3>
+                            <div className="flex-1 h-px bg-border" />
                           </div>
+                        )}
 
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-charcoal truncate">
-                              {dest.name}
-                            </p>
-                            <p className="text-xs text-muted truncate mt-0.5">
-                              {dest.address}
-                            </p>
-                            {dest.notes && (
-                              <p className="mt-1.5 text-xs text-muted/80 leading-relaxed line-clamp-2">
-                                {dest.notes}
-                              </p>
-                            )}
-                          </div>
-                        </div>
+                        {dayDests.map((dest) => {
+                          const driveTime = getDriveTimeToNext(dest.id);
+                          return (
+                            <div key={dest.id} className="flex flex-col">
+                              <div
+                                className={`
+                                  flex items-start gap-3 rounded-lg border bg-cream p-3
+                                  border-l-4 border-l-terracotta
+                                  transition-all duration-200 cursor-pointer
+                                  shadow-sm
+                                  ${
+                                    highlightedId === dest.id
+                                      ? "ring-2 ring-terracotta/40 bg-stone-light"
+                                      : "border-border hover:bg-stone-light/50"
+                                  }
+                                `}
+                                onClick={() => setHighlightedId(dest.id)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setHighlightedId(dest.id);
+                                  }
+                                }}
+                              >
+                                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
+                                  {dest.sortOrder + 1}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-charcoal truncate">
+                                    {dest.name}
+                                  </p>
+                                  <p className="text-xs text-muted truncate mt-0.5">
+                                    {dest.address}
+                                  </p>
+                                  {dest.notes && (
+                                    <p className="mt-1.5 text-xs text-muted/80 leading-relaxed line-clamp-2">
+                                      {dest.notes}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
 
-                        {/* Drive time badge between destinations */}
-                        {driveTime !== null && (
-                          <div className="flex justify-center py-1.5">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-stone px-2 py-0.5 text-xs text-muted">
-                              <Clock size={10} className="shrink-0" />
-                              {formatDuration(driveTime)}
-                            </span>
-                          </div>
+                              {driveTime !== null && (
+                                <div className="flex justify-center py-1.5">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-stone px-2 py-0.5 text-xs text-muted">
+                                    <Clock size={10} className="shrink-0" />
+                                    {formatDuration(driveTime)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {dayDests.length === 0 && (
+                          <p className="text-xs text-muted italic py-2 pl-2">
+                            No stops planned for this day
+                          </p>
                         )}
                       </div>
                     );
@@ -318,6 +338,9 @@ function SharedTripView({ trip }: SharedTripViewProps) {
             routes={routes}
             highlightedId={highlightedId}
             onMarkerClick={handleMarkerClick}
+            pois={[]}
+            onPoisChange={() => {}}
+            onAddPOI={() => {}}
           />
         </div>
       </div>
