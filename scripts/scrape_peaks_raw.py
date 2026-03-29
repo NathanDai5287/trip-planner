@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 Scrape every OSM node tagged  natural=peak  that also carries  name  and  ele
-from the Overpass API.  Saves raw results to scripts/raw_data/peaks_raw.json.
+from the Overpass API for the United States (contiguous + Alaska + Hawaii +
+Puerto Rico).  Saves raw results to scripts/raw_data/peaks_raw.json.
 
 No filtering is applied here — run build_peaks.py afterwards to apply an
 isolation filter and write the final GeoJSON for the app.
 
-The world is divided into 30°×30° bounding-box chunks (72 total; ~30 are
-meaningful land areas).  Requests are distributed across three public Overpass
-mirrors in round-robin so no single server is hammered.
+Each US region is tiled into 15°×15° bounding-box chunks.  Requests are
+distributed across three public Overpass mirrors in round-robin so no single
+server is hammered.
 
 Usage:
     pip install requests
-    python3 scripts/scrape_peaks_raw.py                 # full world, 4 workers
-    python3 scripts/scrape_peaks_raw.py --workers 6     # more parallel (be polite)
+    python3 scripts/scrape_peaks_raw.py                 # US, 3 parallel workers
     python3 scripts/scrape_peaks_raw.py --workers 1     # sequential, safest
     python3 scripts/scrape_peaks_raw.py --resume        # skip already-done chunks
-    python3 scripts/scrape_peaks_raw.py --bbox "-125,24,-66,50"  # contiguous US only
-    python3 scripts/scrape_peaks_raw.py --chunk-deg 15  # smaller chunks (more requests, lower timeout risk)
+    python3 scripts/scrape_peaks_raw.py --chunk-deg 10  # smaller chunks (lower timeout risk)
+    python3 scripts/scrape_peaks_raw.py --bbox "-125,24,-66,50"  # custom single bbox
 """
 
 import argparse
@@ -63,15 +63,32 @@ def mirror_for_thread(worker_id: int) -> str:
     return _thread_local.mirror
 
 
+# ── US regions ────────────────────────────────────────────────────────────────
+
+# (south, west, north, east, label)
+US_REGIONS = [
+    (24.0, -125.0, 50.0,  -66.0, "Contiguous US"),
+    (51.0, -168.0, 72.0, -130.0, "Alaska"),
+    (18.0, -161.0, 24.0, -154.0, "Hawaii"),
+    (17.8,  -67.9, 18.5,  -65.2, "Puerto Rico"),
+]
+
+
 # ── Chunk generation ──────────────────────────────────────────────────────────
 
-def world_chunks(chunk_deg: int = 30) -> list[tuple[float, float, float, float]]:
-    """Return (south, west, north, east) tuples covering the whole world."""
+def us_chunks(chunk_deg: int = 15) -> list[tuple[float, float, float, float]]:
+    """Tile each US region into chunk_deg×chunk_deg bboxes."""
     chunks = []
-    for lat in range(-90, 90, chunk_deg):
-        for lng in range(-180, 180, chunk_deg):
-            chunks.append((float(lat), float(lng),
-                            float(lat + chunk_deg), float(lng + chunk_deg)))
+    for s, w, n, e, _ in US_REGIONS:
+        lat = s
+        while lat < n:
+            lng = w
+            while lng < e:
+                chunks.append((lat, lng,
+                                min(lat + chunk_deg, n),
+                                min(lng + chunk_deg, e)))
+                lng += chunk_deg
+            lat += chunk_deg
     return chunks
 
 
@@ -184,8 +201,8 @@ def main() -> None:
                         help="Skip already-completed chunks using checkpoint file.")
     parser.add_argument("--bbox", metavar="W,S,E,N",
                         help='Restrict to a single bbox, e.g. "-125,24,-66,50".')
-    parser.add_argument("--chunk-deg", type=int, default=30,
-                        help="Chunk size in degrees (default 30). Smaller = more "
+    parser.add_argument("--chunk-deg", type=int, default=15,
+                        help="Chunk size in degrees (default 15). Smaller = more "
                              "requests but lower per-request timeout risk.")
     args = parser.parse_args()
 
@@ -204,8 +221,8 @@ def main() -> None:
         _write_raw(peaks)
         return
 
-    # ── Chunked world mode ────────────────────────────────────────────────────
-    all_chunks = world_chunks(args.chunk_deg)
+    # ── Chunked US mode ───────────────────────────────────────────────────────
+    all_chunks = us_chunks(args.chunk_deg)
 
     if args.resume:
         cp = load_checkpoint()
