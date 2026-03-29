@@ -105,7 +105,7 @@ function POIOverlayControls({
   const filteredRef = useRef<Record<DatasetKey, PointOfInterest[]>>({ gym: [], library: [] });
   const bboxKeyRef = useRef<string>("");
 
-  const hasRoute = routes.length > 0;
+  const hasRoute = destinations.length >= 2;
 
   const routeCoordinates: [number, number][] = [...destinations]
     .sort((a, b) => a.sortOrder - b.sortOrder)

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Trip, Destination, PointOfInterest } from "@/lib/types";
-import { Map as MapIcon, PanelLeftClose, PanelLeft } from "lucide-react";
+import { Map as MapIcon, PanelLeftClose } from "lucide-react";
 import toast from "react-hot-toast";
 import { decodePolyline } from "@/lib/polyline";
 import {
@@ -37,6 +37,7 @@ function TripEditor({ trip }: TripEditorProps) {
   const [routes, setRoutes] = useState<RouteSegment[]>([]);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [routesLoading, setRoutesLoading] = useState(false);
   const [pois, setPois] = useState<PointOfInterest[]>([]);
   const routeCacheRef = useRef<Map<string, RouteSegment>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
@@ -48,8 +49,11 @@ function TripEditor({ trip }: TripEditorProps) {
 
     if (dests.length < 2) {
       setRoutes([]);
+      setRoutesLoading(false);
       return;
     }
+
+    setRoutesLoading(true);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -114,6 +118,7 @@ function TripEditor({ trip }: TripEditorProps) {
 
     if (!controller.signal.aborted) {
       setRoutes(newRoutes);
+      setRoutesLoading(false);
     }
   }, []);
 
@@ -261,15 +266,6 @@ function TripEditor({ trip }: TripEditorProps) {
           overflow-hidden
         `}
       >
-        <button
-          type="button"
-          onClick={() => setShowSidebar((v) => !v)}
-          className="hidden lg:flex absolute top-3 right-3 z-10 h-8 w-8 items-center justify-center rounded-md text-muted hover:text-charcoal hover:bg-stone-light transition-colors cursor-pointer"
-          aria-label="Toggle sidebar"
-        >
-          {showSidebar ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
-        </button>
-
         <div className="flex flex-col h-full overflow-hidden">
           <div className="px-5 pt-5 pb-2">
             <TripTitle tripId={trip.id} initialTitle={trip.title} />
@@ -287,6 +283,7 @@ function TripEditor({ trip }: TripEditorProps) {
               tripId={trip.id}
               destinations={destinations}
               routes={routes}
+              routesLoading={routesLoading}
               totalDays={totalDays}
               highlightedId={highlightedId}
               onReorder={handleDestinationsReordered}

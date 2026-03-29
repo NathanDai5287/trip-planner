@@ -7,13 +7,11 @@ import { GripVertical, Trash2 } from "lucide-react";
 import type { Destination } from "@/lib/types";
 import toast from "react-hot-toast";
 import { removeDestination, updateDestinationNotes } from "@/lib/firestore";
-import { DriveTimeBadge } from "./drive-time-badge";
 
 interface DestinationCardProps {
   destination: Destination;
   tripId: string;
   index: number;
-  driveTimeToNext: number | null;
   isHighlighted: boolean;
   onRemove: (destId: string) => void;
   onHighlight: (destId: string | null) => void;
@@ -23,7 +21,6 @@ function DestinationCard({
   destination,
   tripId,
   index,
-  driveTimeToNext,
   isHighlighted,
   onRemove,
   onHighlight,
@@ -71,7 +68,6 @@ function DestinationCard({
 
   const exitEditing = useCallback(() => {
     setEditingNotes(false);
-    // Flush any pending debounced save immediately
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -138,12 +134,6 @@ function DestinationCard({
           {destination.address}
         </p>
 
-        {driveTimeToNext !== null && (
-          <div className="mt-1.5">
-            <DriveTimeBadge seconds={driveTimeToNext} />
-          </div>
-        )}
-
         {/* Notes area */}
         {editingNotes ? (
           <textarea
@@ -151,6 +141,13 @@ function DestinationCard({
             value={notes}
             onChange={(e) => handleNotesChange(e.target.value)}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                (e.target as HTMLTextAreaElement).blur();
+              }
+            }}
             onBlur={exitEditing}
             placeholder="Add notes about this stop..."
             rows={3}

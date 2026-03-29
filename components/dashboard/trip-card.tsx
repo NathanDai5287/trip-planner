@@ -28,14 +28,14 @@ function TripCard({ trip }: TripCardProps) {
       <Card accent className="group relative transition-shadow duration-200 hover:shadow-md">
         <Link
           href={`/trip/${trip.id}`}
-          className="block px-6 py-5"
+          className="block px-6 py-5 pr-12"
         >
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="font-display text-lg font-semibold text-charcoal leading-snug line-clamp-2">
+          <div className="flex items-start gap-2">
+            <h3 className="font-display text-lg font-semibold text-charcoal leading-snug line-clamp-2 flex-1">
               {trip.title}
             </h3>
             {trip.isPublic && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-forest/10 px-2.5 py-0.5 text-xs font-medium text-forest">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-forest/10 px-2.5 py-0.5 text-xs font-medium text-forest mt-0.5">
                 <Share2 size={12} />
                 Public
               </span>

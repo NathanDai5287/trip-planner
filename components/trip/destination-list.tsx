@@ -18,7 +18,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import type { Destination } from "@/lib/types";
-import { MapPin, Plus } from "lucide-react";
+import { MapPin, Plus, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { reorderDestinations } from "@/lib/firestore";
 import { DestinationCard } from "./destination-card";
@@ -30,6 +30,7 @@ interface DestinationListProps {
   tripId: string;
   destinations: Destination[];
   routes: RouteSegment[];
+  routesLoading: boolean;
   totalDays: number;
   highlightedId: string | null;
   onReorder: (destinations: Destination[]) => void;
@@ -49,6 +50,7 @@ function DestinationList({
   tripId,
   destinations,
   routes,
+  routesLoading,
   totalDays,
   highlightedId,
   onReorder,
@@ -204,25 +206,36 @@ function DestinationList({
                   onRemoveDay={() => onRemoveDay(dayIndex)}
                 />
 
-                <div className="flex flex-col gap-2 ml-1">
+                <div className="flex flex-col gap-0 ml-1">
                   {dayDests.map((dest, i) => {
                     const globalIndex = dayStartIndex + i;
                     const nextDest = dayDests[i + 1];
-                    const driveTimeToNext = nextDest
+                    const driveTime = nextDest
                       ? getDriveTime(dest.id, nextDest.id)
                       : null;
 
                     return (
-                      <DestinationCard
-                        key={dest.id}
-                        destination={dest}
-                        tripId={tripId}
-                        index={globalIndex}
-                        driveTimeToNext={driveTimeToNext}
-                        isHighlighted={highlightedId === dest.id}
-                        onRemove={onRemove}
-                        onHighlight={onHighlight}
-                      />
+                      <div key={dest.id} className="flex flex-col">
+                        <DestinationCard
+                          destination={dest}
+                          tripId={tripId}
+                          index={globalIndex}
+                          isHighlighted={highlightedId === dest.id}
+                          onRemove={onRemove}
+                          onHighlight={onHighlight}
+                        />
+                        {nextDest && (
+                          <div className="flex items-center justify-center py-1">
+                            {routesLoading && driveTime === null ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-muted/50">
+                                <Loader2 size={10} className="animate-spin" />
+                              </span>
+                            ) : driveTime !== null ? (
+                              <DriveTimeBadge seconds={driveTime} />
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                   {dayDests.length === 0 && (
