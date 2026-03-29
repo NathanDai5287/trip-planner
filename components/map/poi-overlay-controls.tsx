@@ -20,6 +20,68 @@ const POI_OPTIONS: { type: POIType; label: string; icon: typeof Tent }[] = [
 
 const MILES_TO_METERS = 1609.34;
 const ALL_TYPES: POIType[] = ["campsite", "gym", "library"];
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// ── localStorage POI cache ──
+
+interface CachedPOIEntry {
+  pois: PointOfInterest[];
+  timestamp: number;
+}
+
+function getStorageKey(cacheKey: string): string {
+  return `poi-cache:${cacheKey}`;
+}
+
+function readCache(cacheKey: string): Map<POIType, PointOfInterest[]> | null {
+  try {
+    const raw = localStorage.getItem(getStorageKey(cacheKey));
+    if (!raw) return null;
+    const entry: CachedPOIEntry = JSON.parse(raw);
+    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+      localStorage.removeItem(getStorageKey(cacheKey));
+      return null;
+    }
+    const map = new Map<POIType, PointOfInterest[]>();
+    for (const type of ALL_TYPES) {
+      map.set(type, entry.pois.filter((p) => p.type === type));
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(cacheKey: string, pois: PointOfInterest[]) {
+  try {
+    const entry: CachedPOIEntry = { pois, timestamp: Date.now() };
+    localStorage.setItem(getStorageKey(cacheKey), JSON.stringify(entry));
+    // Evict old cache entries (keep only the 5 most recent)
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("poi-cache:")) keys.push(key);
+    }
+    if (keys.length > 5) {
+      const toEvict = keys
+        .map((k) => {
+          try {
+            const e: CachedPOIEntry = JSON.parse(localStorage.getItem(k) || "");
+            return { key: k, ts: e.timestamp };
+          } catch {
+            return { key: k, ts: 0 };
+          }
+        })
+        .sort((a, b) => a.ts - b.ts)
+        .slice(0, keys.length - 5);
+      for (const { key } of toEvict) localStorage.removeItem(key);
+    }
+  } catch {
+    // localStorage full or unavailable — silently skip
+  }
+}
+
+// ── Component ──
 
 function POIOverlayControls({
   destinations,
@@ -31,10 +93,9 @@ function POIOverlayControls({
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Cache: all fetched POIs keyed by type
+  // In-memory cache (mirrors localStorage for the current session)
   const cacheRef = useRef<Map<POIType, PointOfInterest[]>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
-  // Track what radius+route the cache was built for
   const cacheKeyRef = useRef<string>("");
 
   const hasRoute = routes.length > 0;
@@ -56,8 +117,8 @@ function POIOverlayControls({
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((d) => [d.lat, d.lng]);
 
-  // Cache key based on route + radius
-  const currentCacheKey = `${routeCoordinates.map(c => c.join(",")).join("|")}@${radiusMiles}`;
+  // Cache key: round coords to 3 decimal places (~111m) to avoid cache misses from tiny GPS drift
+  const currentCacheKey = `${routeCoordinates.map(([a, b]) => `${a.toFixed(3)},${b.toFixed(3)}`).join("|")}@${radiusMiles}`;
 
   // Prefetch ALL POI types whenever route or radius changes
   useEffect(() => {
@@ -67,8 +128,19 @@ function POIOverlayControls({
       return;
     }
 
-    // Skip if cache is already valid for this route+radius
     if (cacheKeyRef.current === currentCacheKey) return;
+
+    // Check localStorage first
+    const stored = readCache(currentCacheKey);
+    if (stored) {
+      cacheRef.current = stored;
+      cacheKeyRef.current = currentCacheKey;
+      const visible = ALL_TYPES
+        .filter((t) => activeTypes.has(t))
+        .flatMap((t) => stored.get(t) || []);
+      onPoisChange(visible);
+      return;
+    }
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -97,7 +169,7 @@ function POIOverlayControls({
         if (!controller.signal.aborted) {
           const allPois: PointOfInterest[] = data.pois || [];
 
-          // Split into cache by type
+          // Populate in-memory cache
           const newCache = new Map<POIType, PointOfInterest[]>();
           for (const type of ALL_TYPES) {
             newCache.set(type, allPois.filter((p: PointOfInterest) => p.type === type));
@@ -105,7 +177,10 @@ function POIOverlayControls({
           cacheRef.current = newCache;
           cacheKeyRef.current = currentCacheKey;
 
-          // Update visible POIs based on active toggles
+          // Persist to localStorage
+          writeCache(currentCacheKey, allPois);
+
+          // Update visible POIs
           const visible = ALL_TYPES
             .filter((t) => activeTypes.has(t))
             .flatMap((t) => newCache.get(t) || []);
