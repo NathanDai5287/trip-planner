@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { nanoid } from "nanoid";
-import type { Trip, Destination, BudgetData, PackingItem } from "./types";
+import type { Trip, Destination, BudgetData, PackingItem, RouteSegment } from "./types";
 import { DEFAULT_BUDGET } from "./types";
 
 function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
@@ -32,6 +32,7 @@ function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
     totalDays: (data.totalDays as number) ?? 1,
     budget: (data.budget as BudgetData) ?? null,
     packingList: (data.packingList as PackingItem[]) ?? [],
+    routes: (data.routes as RouteSegment[]) ?? [],
     createdAt: (data.createdAt as { toDate(): Date })?.toDate?.() || new Date(),
     updatedAt: (data.updatedAt as { toDate(): Date })?.toDate?.() || new Date(),
   };
@@ -54,6 +55,7 @@ export async function createTrip(
     totalDays: 1,
     budget: DEFAULT_BUDGET,
     packingList: [],
+    routes: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -256,6 +258,15 @@ export async function insertDayBefore(tripId: string, dayIndex: number) {
 export async function updateBudget(tripId: string, budget: BudgetData) {
   await updateDoc(doc(db, "trips", tripId), {
     budget,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ── Routes ──
+
+export async function updateRoutes(tripId: string, routes: RouteSegment[]) {
+  await updateDoc(doc(db, "trips", tripId), {
+    routes,
     updatedAt: serverTimestamp(),
   });
 }

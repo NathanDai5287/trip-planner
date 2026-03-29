@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import type { Trip, Destination } from "@/lib/types";
+import type { Trip, Destination, RouteSegment } from "@/lib/types";
 import {
   Compass,
   Map as MapIcon,
@@ -15,7 +15,6 @@ import { decodePolyline } from "@/lib/polyline";
 import { formatDuration } from "@/lib/format-duration";
 import { TripMap } from "@/components/map/trip-map";
 import { Button } from "@/components/ui/button";
-import type { RouteSegment } from "./trip-editor";
 
 type TripWithDestinations = Trip & { destinations: Destination[] };
 

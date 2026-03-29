@@ -42,6 +42,14 @@ export interface PackingItem {
   checked: boolean;
 }
 
+export interface RouteSegment {
+  fromId: string;
+  toId: string;
+  duration: number; // seconds
+  distance: number; // meters
+  geometry: [number, number][]; // [lng, lat] pairs
+}
+
 export interface Trip {
   id: string;
   title: string;
@@ -53,6 +61,7 @@ export interface Trip {
   totalDays: number;
   budget: BudgetData | null;
   packingList: PackingItem[];
+  routes: RouteSegment[];
   createdAt: Date;
   updatedAt: Date;
 }

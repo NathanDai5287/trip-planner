@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Trip, Destination, PointOfInterest, BudgetData, PackingItem } from "@/lib/types";
+import type { Trip, Destination, PointOfInterest, BudgetData, PackingItem, RouteSegment } from "@/lib/types";
 import { DEFAULT_BUDGET } from "@/lib/types";
 import { Map as MapIcon, PanelLeftClose, MapPin, Calculator, CheckSquare } from "lucide-react";
 import { BudgetPanel } from "./budget-panel";
@@ -13,6 +13,7 @@ import {
   removeDay as firestoreRemoveDay,
   insertDayBefore as firestoreInsertDayBefore,
   addDestination,
+  updateRoutes,
 } from "@/lib/firestore";
 import { TripTitle } from "./trip-title";
 import { PlaceSearch } from "./place-search";
@@ -21,13 +22,7 @@ import { TripActions } from "./trip-actions";
 import { TotalDriveTime } from "./total-drive-time";
 import { TripMap } from "@/components/map/trip-map";
 
-export type RouteSegment = {
-  fromId: string;
-  toId: string;
-  duration: number; // seconds
-  distance: number; // meters
-  geometry: [number, number][];
-};
+export type { RouteSegment };
 
 interface TripEditorProps {
   trip: Trip;
@@ -38,7 +33,7 @@ function TripEditor({ trip }: TripEditorProps) {
     trip.destinations,
   );
   const [totalDays, setTotalDays] = useState(trip.totalDays);
-  const [routes, setRoutes] = useState<RouteSegment[]>([]);
+  const [routes, setRoutes] = useState<RouteSegment[]>(trip.routes ?? []);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [activeTab, setActiveTab] = useState<"itinerary" | "budget" | "packing">("itinerary");
@@ -46,7 +41,9 @@ function TripEditor({ trip }: TripEditorProps) {
   const [pois, setPois] = useState<PointOfInterest[]>([]);
   const [budget, setBudget] = useState<BudgetData>(trip.budget ?? DEFAULT_BUDGET);
   const [packingList, setPackingList] = useState<PackingItem[]>(trip.packingList ?? []);
-  const routeCacheRef = useRef<Map<string, RouteSegment>>(new Map());
+  const routeCacheRef = useRef<Map<string, RouteSegment>>(
+    new Map((trip.routes ?? []).map((r) => [`${r.fromId}-${r.toId}`, r]))
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchRoutes = useCallback(async (dests: Destination[]) => {
@@ -127,16 +124,29 @@ function TripEditor({ trip }: TripEditorProps) {
     if (!controller.signal.aborted) {
       setRoutes(newRoutes);
       setRoutesLoading(false);
+      updateRoutes(trip.id, newRoutes).catch(() => {
+        console.error("Failed to save routes");
+      });
     }
-  }, []);
+  }, [trip.id]);
 
+  const isFirstMount = useRef(true);
   useEffect(() => {
-    fetchRoutes(destinations);
-    return () => {
-      if (abortRef.current) {
-        abortRef.current.abort();
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      // Skip OSRM on load if all consecutive pairs are already cached
+      if (destinations.length >= 2) {
+        const sorted = [...destinations].sort((a, b) => a.sortOrder - b.sortOrder);
+        const allCached = sorted.slice(0, -1).every((d, i) =>
+          routeCacheRef.current.has(`${d.id}-${sorted[i + 1].id}`)
+        );
+        if (allCached) return;
+      } else {
+        return;
       }
-    };
+    }
+    fetchRoutes(destinations);
+    return () => { abortRef.current?.abort(); };
   }, [destinations, fetchRoutes]);
 
   const handleDestinationAdded = useCallback((dest: Destination) => {
@@ -155,7 +165,8 @@ function TripEditor({ trip }: TripEditorProps) {
 
   const handleDestinationsReordered = useCallback((reordered: Destination[]) => {
     setDestinations(reordered);
-    routeCacheRef.current.clear();
+    // Don't clear cache — individual A→B segments are still valid after reorder.
+    // fetchRoutes will assemble them in the new order, fetching only missing pairs.
   }, []);
 
   const handleMarkerClick = useCallback((destId: string) => {
@@ -165,7 +176,7 @@ function TripEditor({ trip }: TripEditorProps) {
 
   const handleImportDestinations = useCallback((imported: Destination[]) => {
     setDestinations(imported);
-    routeCacheRef.current.clear();
+    routeCacheRef.current.clear(); // imported destinations have new IDs, cache is invalid
   }, []);
 
   // Day management
