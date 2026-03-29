@@ -167,12 +167,20 @@ function TripMap({
       {routes.length > 0 && (
         <Source id="route" type="geojson" data={routeGeoJSON}>
           <Layer
+            id="route-line-casing"
+            type="line"
+            paint={{
+              "line-color": "#ffffff",
+              "line-width": 8,
+              "line-opacity": 0.7,
+            }}
+          />
+          <Layer
             id="route-line"
             type="line"
             paint={{
               "line-color": "#c0582f",
-              "line-width": 3,
-              "line-dasharray": [2, 2],
+              "line-width": 5,
             }}
           />
         </Source>
@@ -184,27 +192,30 @@ function TripMap({
           key={dest.id}
           longitude={dest.lng}
           latitude={dest.lat}
-          anchor="center"
+          anchor="bottom"
           onClick={(e) => {
             e.originalEvent.stopPropagation();
             onMarkerClick(dest.id);
           }}
         >
           <div
-            className={`
-              flex items-center justify-center
-              w-8 h-8 rounded-full
-              bg-terracotta text-white text-xs font-bold
-              border-2 cursor-pointer
-              transition-all duration-200
-              ${
-                highlightedId === dest.id
-                  ? "border-gold scale-125 shadow-lg ring-2 ring-gold/40"
-                  : "border-gold shadow-md hover:scale-110"
-              }
-            `}
+            className={`flex flex-col items-center cursor-pointer transition-all duration-200 ${
+              highlightedId === dest.id ? "scale-125" : "hover:scale-110"
+            }`}
           >
-            {index + 1}
+            <div
+              className={`
+                flex items-center justify-center
+                w-9 h-9 rounded-full
+                bg-terracotta text-white text-sm font-bold
+                border-[3px] shadow-[0_4px_12px_rgba(0,0,0,0.45)]
+                ${highlightedId === dest.id ? "border-white ring-2 ring-terracotta/60" : "border-white"}
+              `}
+            >
+              {index + 1}
+            </div>
+            {/* Pin tip */}
+            <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[9px] border-l-transparent border-r-transparent border-t-terracotta -mt-px" />
           </div>
         </Marker>
       ))}

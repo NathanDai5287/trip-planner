@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Upload, Share2, Link, Check, Trash2, Loader2 } from "lucide-react";
+import { Download, Upload, Share2, Link, Check, Trash2, Loader2, Printer } from "lucide-react";
 import type { Trip, Destination } from "@/lib/types";
 import toast from "react-hot-toast";
 import { Modal } from "@/components/ui/modal";
@@ -156,6 +156,10 @@ function TripActions({ trip, destinations, onImportComplete }: TripActionsProps)
   return (
     <>
       <div className="flex items-center gap-0.5">
+        <ActionBtn title="Print / Save as PDF" onClick={() => window.open(`/trip/${trip.id}/print`, "_blank")}>
+          <Printer size={14} />
+        </ActionBtn>
+
         <ActionBtn title="Export trip" onClick={handleExport}>
           <Download size={14} />
         </ActionBtn>
