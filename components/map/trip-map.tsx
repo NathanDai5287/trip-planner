@@ -4,14 +4,18 @@ import { useRef, useCallback, useEffect, useState } from "react";
 import {
   Map,
   Marker,
+  Popup,
   Source,
   Layer,
   NavigationControl,
   type MapRef,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Destination } from "@/lib/types";
+import { Tent, Dumbbell, BookOpen } from "lucide-react";
+import type { Destination, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
+import { POIOverlayControls } from "./poi-overlay-controls";
+import { POIPopup } from "./poi-popup";
 
 const MAP_STYLE = {
   version: 8 as const,
@@ -33,11 +37,20 @@ const MAP_STYLE = {
   ],
 };
 
+const POI_ICON_CONFIG = {
+  campsite: { icon: Tent, color: "bg-green-600", borderColor: "border-green-400" },
+  gym: { icon: Dumbbell, color: "bg-blue-600", borderColor: "border-blue-400" },
+  library: { icon: BookOpen, color: "bg-orange-600", borderColor: "border-orange-400" },
+} as const;
+
 interface TripMapProps {
   destinations: Destination[];
   routes: RouteSegment[];
   highlightedId: string | null;
   onMarkerClick: (destId: string) => void;
+  pois: PointOfInterest[];
+  onPoisChange: (pois: PointOfInterest[]) => void;
+  onAddPOI: (poi: PointOfInterest) => void;
 }
 
 function TripMap({
@@ -45,9 +58,13 @@ function TripMap({
   routes,
   highlightedId,
   onMarkerClick,
+  pois,
+  onPoisChange,
+  onAddPOI,
 }: TripMapProps) {
   const mapRef = useRef<MapRef>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [selectedPOI, setSelectedPOI] = useState<PointOfInterest | null>(null);
 
   // Fit bounds when destinations change
   useEffect(() => {
@@ -98,6 +115,14 @@ function TripMap({
   const handleLoad = useCallback(() => {
     setMapLoaded(true);
   }, []);
+
+  const handleAddPOIFromPopup = useCallback(
+    (poi: PointOfInterest) => {
+      onAddPOI(poi);
+      setSelectedPOI(null);
+    },
+    [onAddPOI],
+  );
 
   const routeGeoJSON = {
     type: "FeatureCollection" as const,
@@ -170,6 +195,58 @@ function TripMap({
           </div>
         </Marker>
       ))}
+
+      {/* POI markers */}
+      {pois.map((poi) => {
+        const config = POI_ICON_CONFIG[poi.type];
+        const Icon = config.icon;
+        return (
+          <Marker
+            key={`poi-${poi.id}`}
+            longitude={poi.lng}
+            latitude={poi.lat}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setSelectedPOI(poi);
+            }}
+          >
+            <div
+              className={`
+                flex items-center justify-center
+                w-6 h-6 rounded-full
+                ${config.color} text-white
+                border ${config.borderColor}
+                cursor-pointer shadow-sm
+                hover:scale-110 transition-transform duration-150
+              `}
+            >
+              <Icon size={12} />
+            </div>
+          </Marker>
+        );
+      })}
+
+      {/* POI popup */}
+      {selectedPOI && (
+        <Popup
+          longitude={selectedPOI.lng}
+          latitude={selectedPOI.lat}
+          anchor="bottom"
+          onClose={() => setSelectedPOI(null)}
+          closeOnClick={false}
+          className="[&_.maplibregl-popup-content]:!p-3 [&_.maplibregl-popup-content]:!rounded-lg [&_.maplibregl-popup-content]:!shadow-lg"
+        >
+          <POIPopup poi={selectedPOI} onAddToTrip={handleAddPOIFromPopup} />
+        </Popup>
+      )}
+
+      {/* POI overlay controls */}
+      <POIOverlayControls
+        destinations={destinations}
+        routes={routes}
+        onPoisChange={onPoisChange}
+      />
     </Map>
   );
 }
