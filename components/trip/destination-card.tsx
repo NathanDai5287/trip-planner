@@ -6,7 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Trash2 } from "lucide-react";
 import type { Destination } from "@/lib/types";
 import toast from "react-hot-toast";
-import { removeDestination, updateDestinationNotes } from "@/lib/firestore";
+import { updateDestinationNotes } from "@/lib/firestore";
 
 interface DestinationCardProps {
   destination: Destination;
@@ -27,7 +27,6 @@ function DestinationCard({
 }: DestinationCardProps) {
   const [notes, setNotes] = useState(destination.notes);
   const [editingNotes, setEditingNotes] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesRef = useRef(notes);
 
@@ -79,17 +78,9 @@ function DestinationCard({
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
-  const handleDelete = useCallback(async () => {
-    setIsDeleting(true);
-    try {
-      await removeDestination(tripId, destination.id);
-      onRemove(destination.id);
-      toast.success(`Removed ${destination.name}`);
-    } catch {
-      toast.error("Failed to remove destination");
-      setIsDeleting(false);
-    }
-  }, [destination.id, destination.name, tripId, onRemove]);
+  const handleDelete = useCallback(() => {
+    onRemove(destination.id);
+  }, [destination.id, onRemove]);
 
   return (
     <div
@@ -173,8 +164,7 @@ function DestinationCard({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); handleDelete(); }}
-        disabled={isDeleting}
-        className="mt-1 shrink-0 text-muted hover:text-danger transition-colors cursor-pointer disabled:opacity-50"
+        className="mt-1 shrink-0 text-muted hover:text-danger transition-colors cursor-pointer"
         aria-label={`Remove ${destination.name}`}
       >
         <Trash2 size={14} />

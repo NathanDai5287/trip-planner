@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { nanoid } from "nanoid";
 import { Download, Upload, Share2, Link, Check, Trash2, Loader2, Printer } from "lucide-react";
 import type { Trip, Destination } from "@/lib/types";
 import toast from "react-hot-toast";
@@ -92,17 +93,22 @@ function TripActions({ trip, destinations, onImportComplete }: TripActionsProps)
         const text = await file.text();
         const json = JSON.parse(text);
         const parsed = importTripSchema.parse(json);
-        const newDestinations: Destination[] = [];
-        for (const dest of parsed.destinations) {
-          const created = await addDestination(trip.id, {
-            osmId: dest.osmId,
-            name: dest.name,
-            address: dest.address,
-            lat: dest.lat,
-            lng: dest.lng,
-          });
-          newDestinations.push(created);
+        const newDestinations: Destination[] = parsed.destinations.map((dest, i) => ({
+          id: nanoid(),
+          osmId: dest.osmId || null,
+          name: dest.name,
+          address: dest.address,
+          lat: dest.lat,
+          lng: dest.lng,
+          notes: "",
+          sortOrder: destinations.length + i,
+          dayIndex: Math.max(0, trip.totalDays - 1),
+        }));
+
+        for (const dest of newDestinations) {
+          await addDestination(trip.id, dest);
         }
+
         onImportComplete([...destinations, ...newDestinations]);
         toast.success(`Imported ${newDestinations.length} destination${newDestinations.length !== 1 ? "s" : ""}`);
       } catch (err) {

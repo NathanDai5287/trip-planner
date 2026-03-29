@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  arrayUnion,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { nanoid } from "nanoid";
@@ -130,39 +131,16 @@ export async function getSharedTrip(slug: string): Promise<Trip | null> {
 
 // ── Destinations (embedded in trip document) ──
 
-export async function addDestination(
-  tripId: string,
-  data: { osmId?: string; name: string; address: string; lat: number; lng: number },
-): Promise<Destination> {
-  const trip = await getTrip(tripId);
-  if (!trip) throw new Error("Trip not found");
-
-  const newDest: Destination = {
-    id: nanoid(),
-    osmId: data.osmId || null,
-    name: data.name,
-    address: data.address,
-    lat: data.lat,
-    lng: data.lng,
-    notes: "",
-    sortOrder: trip.destinations.length,
-    dayIndex: Math.max(0, trip.totalDays - 1),
-  };
-
+export async function addDestination(tripId: string, dest: Destination): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
-    destinations: [...trip.destinations, newDest],
+    destinations: arrayUnion(dest),
     updatedAt: serverTimestamp(),
   });
-
-  return newDest;
 }
 
-export async function removeDestination(tripId: string, destinationId: string) {
-  const trip = await getTrip(tripId);
-  if (!trip) throw new Error("Trip not found");
-
+export async function removeDestination(tripId: string, remaining: Destination[]): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
-    destinations: trip.destinations.filter((d) => d.id !== destinationId),
+    destinations: remaining,
     updatedAt: serverTimestamp(),
   });
 }
@@ -183,78 +161,42 @@ export async function updateDestinationNotes(
   });
 }
 
-export async function reorderDestinations(
-  tripId: string,
-  orderedItems: { id: string; dayIndex: number }[],
-) {
-  const trip = await getTrip(tripId);
-  if (!trip) throw new Error("Trip not found");
-
-  const reordered = orderedItems
-    .map((item, index) => {
-      const dest = trip.destinations.find((d) => d.id === item.id);
-      return dest ? { ...dest, sortOrder: index, dayIndex: item.dayIndex } : null;
-    })
-    .filter((d): d is Destination => d !== null);
-
+export async function reorderDestinations(tripId: string, destinations: Destination[]): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
-    destinations: reordered,
+    destinations,
     updatedAt: serverTimestamp(),
   });
 }
 
 // ── Day management ──
 
-export async function addDay(tripId: string): Promise<number> {
-  const trip = await getTrip(tripId);
-  if (!trip) throw new Error("Trip not found");
-
-  const newTotalDays = trip.totalDays + 1;
+export async function addDay(tripId: string, newTotalDays: number): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
     totalDays: newTotalDays,
     updatedAt: serverTimestamp(),
   });
-  return newTotalDays;
 }
 
-export async function removeDay(tripId: string, dayIndex: number) {
-  const trip = await getTrip(tripId);
-  if (!trip) throw new Error("Trip not found");
-
-  if (trip.totalDays <= 1) throw new Error("Cannot remove the only day");
-
-  const targetDay = dayIndex > 0 ? dayIndex - 1 : 1;
-  const updatedDestinations = trip.destinations.map((d) => {
-    if (d.dayIndex === dayIndex) {
-      return { ...d, dayIndex: targetDay };
-    }
-    if (d.dayIndex > dayIndex) {
-      return { ...d, dayIndex: d.dayIndex - 1 };
-    }
-    return d;
-  });
-
+export async function removeDay(
+  tripId: string,
+  updatedDestinations: Destination[],
+  newTotalDays: number,
+): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
     destinations: updatedDestinations,
-    totalDays: trip.totalDays - 1,
+    totalDays: newTotalDays,
     updatedAt: serverTimestamp(),
   });
 }
 
-export async function insertDayBefore(tripId: string, dayIndex: number) {
-  const trip = await getTrip(tripId);
-  if (!trip) throw new Error("Trip not found");
-
-  const updatedDestinations = trip.destinations.map((d) => {
-    if (d.dayIndex >= dayIndex) {
-      return { ...d, dayIndex: d.dayIndex + 1 };
-    }
-    return d;
-  });
-
+export async function insertDayBefore(
+  tripId: string,
+  updatedDestinations: Destination[],
+  newTotalDays: number,
+): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
     destinations: updatedDestinations,
-    totalDays: trip.totalDays + 1,
+    totalDays: newTotalDays,
     updatedAt: serverTimestamp(),
   });
 }

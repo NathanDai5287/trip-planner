@@ -3,8 +3,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Search, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
-import type { Destination } from "@/lib/types";
-import { addDestination } from "@/lib/firestore";
 
 interface NominatimResult {
   place_id: number;
@@ -17,16 +15,14 @@ interface NominatimResult {
 }
 
 interface PlaceSearchProps {
-  tripId: string;
-  onDestinationAdded: (dest: Destination) => void;
+  onPlaceSelected: (data: { osmId?: string; name: string; address: string; lat: number; lng: number }) => void;
 }
 
-function PlaceSearch({ tripId, onDestinationAdded }: PlaceSearchProps) {
+function PlaceSearch({ onPlaceSelected }: PlaceSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NominatimResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,27 +83,19 @@ function PlaceSearch({ tripId, onDestinationAdded }: PlaceSearchProps) {
   }, []);
 
   const handleSelectResult = useCallback(
-    async (result: NominatimResult) => {
-      setIsAdding(true);
-      try {
-        const dest = await addDestination(tripId, {
-          osmId: `${result.osm_type}/${result.osm_id}`,
-          name: result.name || result.display_name.split(",")[0],
-          address: result.display_name,
-          lat: parseFloat(result.lat),
-          lng: parseFloat(result.lon),
-        });
-        onDestinationAdded(dest);
-        setQuery("");
-        setResults([]);
-        setIsOpen(false);
-      } catch {
-        toast.error("Failed to add destination");
-      } finally {
-        setIsAdding(false);
-      }
+    (result: NominatimResult) => {
+      onPlaceSelected({
+        osmId: `${result.osm_type}/${result.osm_id}`,
+        name: result.name || result.display_name.split(",")[0],
+        address: result.display_name,
+        lat: parseFloat(result.lat),
+        lng: parseFloat(result.lon),
+      });
+      setQuery("");
+      setResults([]);
+      setIsOpen(false);
     },
-    [tripId, onDestinationAdded],
+    [onPlaceSelected],
   );
 
   return (
@@ -123,8 +111,7 @@ function PlaceSearch({ tripId, onDestinationAdded }: PlaceSearchProps) {
           onChange={(e) => handleInputChange(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder="Search for a place..."
-          disabled={isAdding}
-          className="w-full rounded-lg border border-border bg-cream pl-9 pr-9 py-2.5 text-sm text-charcoal font-body placeholder:text-muted transition-colors duration-150 focus:bg-stone-light focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 focus:outline-none disabled:opacity-50"
+          className="w-full rounded-lg border border-border bg-cream pl-9 pr-9 py-2.5 text-sm text-charcoal font-body placeholder:text-muted transition-colors duration-150 focus:bg-stone-light focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 focus:outline-none"
         />
         {isLoading && (
           <Loader2
@@ -141,8 +128,7 @@ function PlaceSearch({ tripId, onDestinationAdded }: PlaceSearchProps) {
               key={result.place_id}
               type="button"
               onClick={() => handleSelectResult(result)}
-              disabled={isAdding}
-              className="w-full text-left px-4 py-3 hover:bg-stone-light transition-colors border-b border-border/50 last:border-b-0 cursor-pointer disabled:opacity-50"
+              className="w-full text-left px-4 py-3 hover:bg-stone-light transition-colors border-b border-border/50 last:border-b-0 cursor-pointer"
             >
               <p className="text-sm font-medium text-charcoal truncate">
                 {result.name || result.display_name.split(",")[0]}

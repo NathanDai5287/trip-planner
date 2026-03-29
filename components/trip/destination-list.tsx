@@ -136,10 +136,7 @@ function DestinationList({
     async (updated: Destination[]) => {
       onReorder(updated);
       try {
-        await reorderDestinations(
-          tripId,
-          updated.map((d) => ({ id: d.id, dayIndex: d.dayIndex })),
-        );
+        await reorderDestinations(tripId, updated);
       } catch {
         onReorder(destinations);
         toast.error("Failed to reorder destinations");
