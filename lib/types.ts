@@ -7,6 +7,7 @@ export interface Destination {
   lng: number;
   notes: string;
   sortOrder: number;
+  dayIndex: number;
 }
 
 export interface Trip {
@@ -17,6 +18,18 @@ export interface Trip {
   isPublic: boolean;
   userId: string;
   destinations: Destination[];
+  totalDays: number;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface PointOfInterest {
+  id: string;
+  name: string;
+  type: "campsite" | "gym" | "library";
+  lat: number;
+  lng: number;
+  tags: Record<string, string>;
+}
+
+export type POIType = PointOfInterest["type"];
