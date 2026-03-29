@@ -29,8 +29,10 @@ function DestinationCard({
   onHighlight,
 }: DestinationCardProps) {
   const [notes, setNotes] = useState(destination.notes);
+  const [editingNotes, setEditingNotes] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesRef = useRef(notes);
 
   const {
     attributes,
@@ -60,18 +62,25 @@ function DestinationCard({
   const handleNotesChange = useCallback(
     (value: string) => {
       setNotes(value);
+      notesRef.current = value;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        saveNotes(value);
-      }, 500);
+      debounceRef.current = setTimeout(() => saveNotes(value), 500);
     },
     [saveNotes],
   );
 
+  const exitEditing = useCallback(() => {
+    setEditingNotes(false);
+    // Flush any pending debounced save immediately
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      saveNotes(notesRef.current);
+    }
+  }, [saveNotes]);
+
   useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
   const handleDelete = useCallback(async () => {
@@ -97,66 +106,82 @@ function DestinationCard({
         ${isDragging ? "opacity-50 shadow-lg scale-[1.02]" : "shadow-sm"}
         ${isHighlighted ? "ring-2 ring-terracotta/40 bg-stone-light" : "border-border"}
       `}
-        onClick={() => onHighlight(destination.id)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onHighlight(destination.id);
-          }
-        }}
+      onClick={() => onHighlight(destination.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onHighlight(destination.id);
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="mt-1 shrink-0 cursor-grab active:cursor-grabbing text-muted hover:text-charcoal transition-colors touch-none"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
       >
-        <button
-          type="button"
-          className="mt-1 shrink-0 cursor-grab active:cursor-grabbing text-muted hover:text-charcoal transition-colors touch-none"
-          {...attributes}
-          {...listeners}
-          aria-label="Drag to reorder"
-        >
-          <GripVertical size={16} />
-        </button>
+        <GripVertical size={16} />
+      </button>
 
-        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
-          {index + 1}
-        </div>
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
+        {index + 1}
+      </div>
 
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-charcoal truncate">
-            {destination.name}
-          </p>
-          <p className="text-xs text-muted truncate mt-0.5">
-            {destination.address}
-          </p>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-charcoal truncate">
+          {destination.name}
+        </p>
+        <p className="text-xs text-muted truncate mt-0.5">
+          {destination.address}
+        </p>
 
-          {driveTimeToNext !== null && (
-            <div className="mt-1.5">
-              <DriveTimeBadge seconds={driveTimeToNext} />
-            </div>
-          )}
+        {driveTimeToNext !== null && (
+          <div className="mt-1.5">
+            <DriveTimeBadge seconds={driveTimeToNext} />
+          </div>
+        )}
 
+        {/* Notes area */}
+        {editingNotes ? (
           <textarea
+            autoFocus
             value={notes}
             onChange={(e) => handleNotesChange(e.target.value)}
             onClick={(e) => e.stopPropagation()}
+            onBlur={exitEditing}
             placeholder="Add notes about this stop..."
             rows={3}
-            className="mt-2 w-full rounded-md border border-border bg-stone-light px-3 py-2 text-sm text-charcoal font-body placeholder:text-muted focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 focus:outline-none resize-none"
+            className="mt-1.5 w-full rounded border border-border bg-stone px-2 py-1.5 text-xs text-charcoal font-body placeholder:text-muted focus:border-terracotta focus:ring-1 focus:ring-terracotta/20 focus:outline-none resize-none"
           />
-        </div>
+        ) : notes ? (
+          <p
+            className="mt-1.5 text-xs text-charcoal whitespace-pre-wrap cursor-text"
+            onClick={(e) => { e.stopPropagation(); setEditingNotes(true); }}
+          >
+            {notes}
+          </p>
+        ) : (
+          <p
+            className="mt-1.5 text-xs text-muted italic cursor-text"
+            onClick={(e) => { e.stopPropagation(); setEditingNotes(true); }}
+          >
+            Add notes...
+          </p>
+        )}
+      </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDelete();
-          }}
-          disabled={isDeleting}
-          className="mt-1 shrink-0 text-muted hover:text-danger transition-colors cursor-pointer disabled:opacity-50"
-          aria-label={`Remove ${destination.name}`}
-        >
-          <Trash2 size={14} />
-        </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+        disabled={isDeleting}
+        className="mt-1 shrink-0 text-muted hover:text-danger transition-colors cursor-pointer disabled:opacity-50"
+        aria-label={`Remove ${destination.name}`}
+      >
+        <Trash2 size={14} />
+      </button>
     </div>
   );
 }
