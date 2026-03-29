@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Trip, Destination, PointOfInterest } from "@/lib/types";
-import { Map as MapIcon, PanelLeftClose } from "lucide-react";
+import type { Trip, Destination, PointOfInterest, BudgetData, PackingItem } from "@/lib/types";
+import { DEFAULT_BUDGET } from "@/lib/types";
+import { Map as MapIcon, PanelLeftClose, MapPin, Calculator, CheckSquare } from "lucide-react";
+import { BudgetPanel } from "./budget-panel";
+import { PackingPanel } from "./packing-panel";
 import toast from "react-hot-toast";
 import { decodePolyline } from "@/lib/polyline";
 import {
@@ -21,7 +24,8 @@ import { TripMap } from "@/components/map/trip-map";
 export type RouteSegment = {
   fromId: string;
   toId: string;
-  duration: number;
+  duration: number; // seconds
+  distance: number; // meters
   geometry: [number, number][];
 };
 
@@ -37,8 +41,11 @@ function TripEditor({ trip }: TripEditorProps) {
   const [routes, setRoutes] = useState<RouteSegment[]>([]);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [activeTab, setActiveTab] = useState<"itinerary" | "budget" | "packing">("itinerary");
   const [routesLoading, setRoutesLoading] = useState(false);
   const [pois, setPois] = useState<PointOfInterest[]>([]);
+  const [budget, setBudget] = useState<BudgetData>(trip.budget ?? DEFAULT_BUDGET);
+  const [packingList, setPackingList] = useState<PackingItem[]>(trip.packingList ?? []);
   const routeCacheRef = useRef<Map<string, RouteSegment>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -100,6 +107,7 @@ function TripEditor({ trip }: TripEditorProps) {
             fromId: pair.from.id,
             toId: pair.to.id,
             duration: osrmRoute.duration,
+            distance: osrmRoute.distance,
             geometry,
           };
 
@@ -267,39 +275,85 @@ function TripEditor({ trip }: TripEditorProps) {
         `}
       >
         <div className="flex flex-col h-full overflow-hidden">
-          <div className="px-5 pt-5 pb-2">
+          <div className="px-5 pt-5 pb-0">
             <TripTitle tripId={trip.id} initialTitle={trip.title} />
           </div>
 
-          <div className="px-5 pb-3">
-            <PlaceSearch
-              tripId={trip.id}
-              onDestinationAdded={handleDestinationAdded}
-            />
+          {/* Tab bar */}
+          <div className="px-5 mt-3 border-b border-border">
+            <nav className="flex gap-0 -mb-px">
+              {([
+                { id: "itinerary", label: "Itinerary", icon: MapPin },
+                { id: "budget",    label: "Budget",    icon: Calculator },
+                { id: "packing",   label: "Packing",   icon: CheckSquare },
+              ] as const).map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className={`
+                    flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors cursor-pointer
+                    ${activeTab === id
+                      ? "border-terracotta text-terracotta"
+                      : "border-transparent text-muted hover:text-charcoal hover:border-border"
+                    }
+                  `}
+                >
+                  <Icon size={12} />
+                  {label}
+                </button>
+              ))}
+            </nav>
           </div>
 
+          {/* Tab content */}
           <div className="flex-1 overflow-y-auto px-5 pb-3">
-            <DestinationList
-              tripId={trip.id}
-              destinations={destinations}
-              routes={routes}
-              routesLoading={routesLoading}
-              totalDays={totalDays}
-              highlightedId={highlightedId}
-              onReorder={handleDestinationsReordered}
-              onRemove={handleDestinationRemoved}
-              onHighlight={setHighlightedId}
-              onAddDay={handleAddDay}
-              onRemoveDay={handleRemoveDay}
-              onInsertDayBefore={handleInsertDayBefore}
-            />
+            {activeTab === "itinerary" && (
+              <>
+                <div className="pt-3 pb-3">
+                  <PlaceSearch
+                    tripId={trip.id}
+                    onDestinationAdded={handleDestinationAdded}
+                  />
+                </div>
+                <DestinationList
+                  tripId={trip.id}
+                  destinations={destinations}
+                  routes={routes}
+                  routesLoading={routesLoading}
+                  totalDays={totalDays}
+                  highlightedId={highlightedId}
+                  onReorder={handleDestinationsReordered}
+                  onRemove={handleDestinationRemoved}
+                  onHighlight={setHighlightedId}
+                  onAddDay={handleAddDay}
+                  onRemoveDay={handleRemoveDay}
+                  onInsertDayBefore={handleInsertDayBefore}
+                />
+              </>
+            )}
+            {activeTab === "budget" && (
+              <BudgetPanel
+                tripId={trip.id}
+                budget={budget}
+                totalDays={totalDays}
+                routes={routes}
+                onChange={setBudget}
+              />
+            )}
+            {activeTab === "packing" && (
+              <PackingPanel
+                tripId={trip.id}
+                items={packingList}
+                onChange={setPackingList}
+              />
+            )}
           </div>
 
-          <div className="border-t border-border px-5 py-4 space-y-3">
-            <TotalDriveTime
-              routes={routes}
-              destinationCount={destinations.length}
-            />
+          <div className="border-t border-border px-5 py-3 space-y-2">
+            {activeTab === "itinerary" && (
+              <TotalDriveTime routes={routes} destinationCount={destinations.length} />
+            )}
             <TripActions
               trip={trip}
               destinations={destinations}

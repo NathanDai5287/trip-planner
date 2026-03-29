@@ -13,7 +13,8 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { nanoid } from "nanoid";
-import type { Trip, Destination } from "./types";
+import type { Trip, Destination, BudgetData, PackingItem } from "./types";
+import { DEFAULT_BUDGET } from "./types";
 
 function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
   const rawDestinations = (data.destinations as Destination[]) || [];
@@ -29,6 +30,8 @@ function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
       dayIndex: d.dayIndex ?? 0,
     })),
     totalDays: (data.totalDays as number) ?? 1,
+    budget: (data.budget as BudgetData) ?? null,
+    packingList: (data.packingList as PackingItem[]) ?? [],
     createdAt: (data.createdAt as { toDate(): Date })?.toDate?.() || new Date(),
     updatedAt: (data.updatedAt as { toDate(): Date })?.toDate?.() || new Date(),
   };
@@ -49,6 +52,8 @@ export async function createTrip(
     userId,
     destinations: [],
     totalDays: 1,
+    budget: DEFAULT_BUDGET,
+    packingList: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -242,6 +247,24 @@ export async function insertDayBefore(tripId: string, dayIndex: number) {
   await updateDoc(doc(db, "trips", tripId), {
     destinations: updatedDestinations,
     totalDays: trip.totalDays + 1,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ── Budget ──
+
+export async function updateBudget(tripId: string, budget: BudgetData) {
+  await updateDoc(doc(db, "trips", tripId), {
+    budget,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ── Packing list ──
+
+export async function updatePackingList(tripId: string, items: PackingItem[]) {
+  await updateDoc(doc(db, "trips", tripId), {
+    packingList: items,
     updatedAt: serverTimestamp(),
   });
 }

@@ -75,6 +75,7 @@ function SharedTripView({ trip }: SharedTripViewProps) {
             fromId: pair.from.id,
             toId: pair.to.id,
             duration: osrmRoute.duration,
+            distance: osrmRoute.distance,
             geometry,
           };
 
