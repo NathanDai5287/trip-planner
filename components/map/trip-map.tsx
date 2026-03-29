@@ -10,14 +10,8 @@ import {
   NavigationControl,
   type MapRef,
 } from "react-map-gl/maplibre";
-import { addProtocol } from "maplibre-gl";
-import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Tent, Dumbbell, BookOpen } from "lucide-react";
-
-// Register PMTiles protocol once at module load
-const pmtilesProtocol = new Protocol();
-addProtocol("pmtiles", pmtilesProtocol.tile.bind(pmtilesProtocol));
 import type { Destination, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 import { POIOverlayControls } from "./poi-overlay-controls";
@@ -248,44 +242,38 @@ function TripMap({
         </Popup>
       )}
 
-      {/* Public lands (BLM/USFS) layer */}
-      <Source
-        id="public-lands"
-        type="vector"
-        url="pmtiles:///data/public_lands.pmtiles"
-      >
-        <Layer
-          id="public-lands-fill"
-          type="fill"
-          source-layer="public_lands"
-          layout={{ visibility: showPublicLands ? "visible" : "none" }}
-          paint={{
-            "fill-color": [
-              "match", ["get", "manager"],
-              "BLM", "#d97706",
-              "USFS", "#16a34a",
-              "#94a3b8",
-            ],
-            "fill-opacity": 0.2,
-          }}
-        />
-        <Layer
-          id="public-lands-outline"
-          type="line"
-          source-layer="public_lands"
-          layout={{ visibility: showPublicLands ? "visible" : "none" }}
-          paint={{
-            "line-color": [
-              "match", ["get", "manager"],
-              "BLM", "#d97706",
-              "USFS", "#16a34a",
-              "#94a3b8",
-            ],
-            "line-width": 1,
-            "line-opacity": 0.6,
-          }}
-        />
-      </Source>
+      {/* Public lands (BLM/USFS) layer — loaded lazily on first toggle */}
+      {showPublicLands && (
+        <Source id="public-lands" type="geojson" data="/data/public_lands.geojson">
+          <Layer
+            id="public-lands-fill"
+            type="fill"
+            paint={{
+              "fill-color": [
+                "match", ["get", "manager"],
+                "BLM", "#d97706",
+                "USFS", "#16a34a",
+                "#94a3b8",
+              ],
+              "fill-opacity": 0.2,
+            }}
+          />
+          <Layer
+            id="public-lands-outline"
+            type="line"
+            paint={{
+              "line-color": [
+                "match", ["get", "manager"],
+                "BLM", "#d97706",
+                "USFS", "#16a34a",
+                "#94a3b8",
+              ],
+              "line-width": 1,
+              "line-opacity": 0.6,
+            }}
+          />
+        </Source>
+      )}
 
       {/* Public lands toggle */}
       <div className="absolute top-3 left-3 z-10">
