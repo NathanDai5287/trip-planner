@@ -44,3 +44,4 @@ next-env.d.ts
 raw-data/
 scripts/.venv
 scripts/raw_data/
+.peaks_checkpoint.json
