@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Tent, Dumbbell, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { Dumbbell, BookOpen, MapPin, Loader2 } from "lucide-react";
 import type { POIType, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 import type { Destination } from "@/lib/types";
@@ -10,259 +10,225 @@ interface POIOverlayControlsProps {
   destinations: Destination[];
   routes: RouteSegment[];
   onPoisChange: (pois: PointOfInterest[]) => void;
+  showPublicLands: boolean;
+  onPublicLandsChange: (show: boolean) => void;
+  publicLandsLoading: boolean;
 }
 
-const POI_OPTIONS: { type: POIType; label: string; icon: typeof Tent }[] = [
-  { type: "campsite", label: "Free Campsites", icon: Tent },
-  { type: "gym", label: "Gyms", icon: Dumbbell },
-  { type: "library", label: "Libraries", icon: BookOpen },
+const POI_OPTIONS: { type: POIType; label: string; icon: typeof Dumbbell; color: string }[] = [
+  { type: "gym",     label: "Gyms",      icon: Dumbbell, color: "text-blue-600" },
+  { type: "library", label: "Libraries", icon: BookOpen,  color: "text-orange-600" },
 ];
 
 const MILES_TO_METERS = 1609.34;
-const ALL_TYPES: POIType[] = ["campsite", "gym", "library"];
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// ── localStorage POI cache ──
+// ── Static dataset loaders (module-level, fetched once per session) ───────────
 
-interface CachedPOIEntry {
-  pois: PointOfInterest[];
-  timestamp: number;
+type DatasetKey = "gym" | "library";
+
+const _datasets: Partial<Record<DatasetKey, PointOfInterest[]>> = {};
+const _fetches: Partial<Record<DatasetKey, Promise<PointOfInterest[]>>> = {};
+
+function loadDataset(type: DatasetKey): Promise<PointOfInterest[]> {
+  if (_datasets[type]) return Promise.resolve(_datasets[type]!);
+  if (_fetches[type]) return _fetches[type]!;
+
+  const url = type === "gym" ? "/data/planet_fitness.geojson" : "/data/libraries.geojson";
+
+  _fetches[type] = fetch(url)
+    .then((r) => r.json())
+    .then((data) => {
+      _datasets[type] = (
+        data.features as {
+          geometry: { coordinates: [number, number] };
+          properties: Record<string, string>;
+        }[]
+      ).map((f, i) => ({
+        id: f.properties.slug ?? f.properties.id ?? String(i),
+        name: f.properties.name,
+        type,
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        tags: f.properties,
+      }));
+      return _datasets[type]!;
+    });
+  return _fetches[type]!;
 }
 
-function getStorageKey(cacheKey: string): string {
-  return `poi-cache:${cacheKey}`;
+// ── Bbox helpers ──────────────────────────────────────────────────────────────
+
+function metersToDegLat(m: number) { return m / 111_320; }
+function metersToDegLng(m: number, lat: number) {
+  return m / (111_320 * Math.cos((lat * Math.PI) / 180));
 }
 
-function readCache(cacheKey: string): Map<POIType, PointOfInterest[]> | null {
-  try {
-    const raw = localStorage.getItem(getStorageKey(cacheKey));
-    if (!raw) return null;
-    const entry: CachedPOIEntry = JSON.parse(raw);
-    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-      localStorage.removeItem(getStorageKey(cacheKey));
-      return null;
-    }
-    const map = new Map<POIType, PointOfInterest[]>();
-    for (const type of ALL_TYPES) {
-      map.set(type, entry.pois.filter((p) => p.type === type));
-    }
-    return map;
-  } catch {
-    return null;
-  }
+function computeBbox(
+  coords: [number, number][],
+  radiusMeters: number,
+): [number, number, number, number] {
+  const lats = coords.map(([lat]) => lat);
+  const lngs = coords.map(([, lng]) => lng);
+  const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const padLat = metersToDegLat(radiusMeters);
+  const padLng = metersToDegLng(radiusMeters, centerLat);
+  return [
+    Math.min(...lats) - padLat,
+    Math.min(...lngs) - padLng,
+    Math.max(...lats) + padLat,
+    Math.max(...lngs) + padLng,
+  ];
 }
 
-function writeCache(cacheKey: string, pois: PointOfInterest[]) {
-  try {
-    const entry: CachedPOIEntry = { pois, timestamp: Date.now() };
-    localStorage.setItem(getStorageKey(cacheKey), JSON.stringify(entry));
-    // Evict old cache entries (keep only the 5 most recent)
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith("poi-cache:")) keys.push(key);
-    }
-    if (keys.length > 5) {
-      const toEvict = keys
-        .map((k) => {
-          try {
-            const e: CachedPOIEntry = JSON.parse(localStorage.getItem(k) || "");
-            return { key: k, ts: e.timestamp };
-          } catch {
-            return { key: k, ts: 0 };
-          }
-        })
-        .sort((a, b) => a.ts - b.ts)
-        .slice(0, keys.length - 5);
-      for (const { key } of toEvict) localStorage.removeItem(key);
-    }
-  } catch {
-    // localStorage full or unavailable — silently skip
-  }
+function filterByBbox(
+  pois: PointOfInterest[],
+  bbox: [number, number, number, number],
+): PointOfInterest[] {
+  const [south, west, north, east] = bbox;
+  return pois.filter((p) => p.lat >= south && p.lat <= north && p.lng >= west && p.lng <= east);
 }
 
-// ── Component ──
+// ── Component ─────────────────────────────────────────────────────────────────
 
 function POIOverlayControls({
   destinations,
   routes,
   onPoisChange,
+  showPublicLands,
+  onPublicLandsChange,
+  publicLandsLoading,
 }: POIOverlayControlsProps) {
   const [activeTypes, setActiveTypes] = useState<Set<POIType>>(new Set());
   const [radiusMiles, setRadiusMiles] = useState(15);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
 
-  // In-memory cache (mirrors localStorage for the current session)
-  const cacheRef = useRef<Map<POIType, PointOfInterest[]>>(new Map());
-  const abortRef = useRef<AbortController | null>(null);
-  const cacheKeyRef = useRef<string>("");
+  // Per-type filtered results and the bbox key they were computed for
+  const filteredRef = useRef<Record<DatasetKey, PointOfInterest[]>>({ gym: [], library: [] });
+  const bboxKeyRef = useRef<string>("");
 
   const hasRoute = routes.length > 0;
 
-  const toggleType = useCallback((type: POIType) => {
-    setActiveTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-      } else {
-        next.add(type);
-      }
-      return next;
-    });
-  }, []);
-
-  // Build route coordinates from destinations (sorted by sortOrder)
   const routeCoordinates: [number, number][] = [...destinations]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((d) => [d.lat, d.lng]);
 
-  // Cache key: round coords to 3 decimal places (~111m) to avoid cache misses from tiny GPS drift
-  const currentCacheKey = `${routeCoordinates.map(([a, b]) => `${a.toFixed(3)},${b.toFixed(3)}`).join("|")}@${radiusMiles}`;
+  const currentBboxKey = `${routeCoordinates.map(([a, b]) => `${a.toFixed(3)},${b.toFixed(3)}`).join("|")}@${radiusMiles}`;
 
-  // Prefetch ALL POI types whenever route or radius changes
+  const toggleType = useCallback((type: POIType) => {
+    setActiveTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
+
+  const emitVisible = useCallback(
+    (active: Set<POIType>) => {
+      const visible: PointOfInterest[] = [];
+      for (const type of (["gym", "library"] as DatasetKey[])) {
+        if (active.has(type)) visible.push(...filteredRef.current[type]);
+      }
+      onPoisChange(visible);
+    },
+    [onPoisChange],
+  );
+
+  // Refilter both datasets whenever route/radius changes
   useEffect(() => {
     if (!hasRoute || routeCoordinates.length < 2) {
-      cacheRef.current.clear();
-      cacheKeyRef.current = "";
+      filteredRef.current = { gym: [], library: [] };
+      bboxKeyRef.current = "";
+      emitVisible(activeTypes);
       return;
     }
 
-    if (cacheKeyRef.current === currentCacheKey) return;
+    if (bboxKeyRef.current === currentBboxKey) return;
 
-    // Check localStorage first
-    const stored = readCache(currentCacheKey);
-    if (stored) {
-      cacheRef.current = stored;
-      cacheKeyRef.current = currentCacheKey;
-      const visible = ALL_TYPES
-        .filter((t) => activeTypes.has(t))
-        .flatMap((t) => stored.get(t) || []);
-      onPoisChange(visible);
-      return;
-    }
+    const radiusMeters = Math.round(radiusMiles * MILES_TO_METERS);
+    const bbox = computeBbox(routeCoordinates, radiusMeters);
+    const key = currentBboxKey;
 
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const prefetch = async () => {
-      setIsLoading(true);
-      try {
-        const res = await fetch("/api/overpass", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            coordinates: routeCoordinates,
-            radius: Math.round(radiusMiles * MILES_TO_METERS),
-            types: ALL_TYPES,
-          }),
-          signal: controller.signal,
+    for (const type of (["gym", "library"] as DatasetKey[])) {
+      if (_datasets[type]) {
+        filteredRef.current[type] = filterByBbox(_datasets[type]!, bbox);
+        if (type === "library" || Object.keys(_datasets).length === 2) {
+          bboxKeyRef.current = key;
+          emitVisible(activeTypes);
+        }
+      } else {
+        loadDataset(type).then((all) => {
+          filteredRef.current[type] = filterByBbox(all, bbox);
+          // Only update key once both are done (or on each load — still correct)
+          bboxKeyRef.current = key;
+          emitVisible(activeTypes);
         });
-
-        if (!res.ok) throw new Error("POI fetch failed");
-
-        const data = await res.json();
-        if (!controller.signal.aborted) {
-          const allPois: PointOfInterest[] = data.pois || [];
-
-          // Populate in-memory cache
-          const newCache = new Map<POIType, PointOfInterest[]>();
-          for (const type of ALL_TYPES) {
-            newCache.set(type, allPois.filter((p: PointOfInterest) => p.type === type));
-          }
-          cacheRef.current = newCache;
-          cacheKeyRef.current = currentCacheKey;
-
-          // Persist to localStorage
-          writeCache(currentCacheKey, allPois);
-
-          // Update visible POIs
-          const visible = ALL_TYPES
-            .filter((t) => activeTypes.has(t))
-            .flatMap((t) => newCache.get(t) || []);
-          onPoisChange(visible);
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("Failed to prefetch POIs:", err);
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
       }
-    };
-
-    const timer = setTimeout(prefetch, 500);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [hasRoute, currentCacheKey]);
-
-  // When toggles change, just filter from cache — no network request
-  useEffect(() => {
-    if (!cacheRef.current.size) {
-      onPoisChange([]);
-      return;
     }
+  }, [hasRoute, currentBboxKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const visible = ALL_TYPES
-      .filter((t) => activeTypes.has(t))
-      .flatMap((t) => cacheRef.current.get(t) || []);
-    onPoisChange(visible);
-  }, [activeTypes]);
+  // Re-emit when active types change
+  useEffect(() => {
+    emitVisible(activeTypes);
+  }, [activeTypes, emitVisible]);
 
   return (
-    <div className="absolute bottom-4 left-4 z-10">
-      <div className="bg-cream/95 backdrop-blur-sm rounded-lg border border-border shadow-lg overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setIsExpanded((v) => !v)}
-          className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-charcoal hover:bg-stone-light transition-colors cursor-pointer w-full"
-        >
-          <span>Show Nearby</span>
-          {isLoading && (
-            <span className="w-3 h-3 border-2 border-terracotta/30 border-t-terracotta rounded-full animate-spin" />
-          )}
-          <span className="ml-auto">
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-          </span>
-        </button>
+    <div className="absolute bottom-4 left-4 z-10 w-52">
+      <div className="bg-cream rounded-xl border border-border shadow-xl overflow-hidden">
 
-        {isExpanded && (
-          <div className="px-3 pb-3 space-y-2 border-t border-border/50 pt-2">
-            {POI_OPTIONS.map(({ type, label, icon: Icon }) => (
-              <label
-                key={type}
-                className="flex items-center gap-2 text-xs text-charcoal cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={activeTypes.has(type)}
-                  onChange={() => toggleType(type)}
-                  disabled={!hasRoute}
-                  className="rounded border-border text-terracotta focus:ring-terracotta/20 disabled:opacity-50"
-                />
-                <Icon
-                  size={14}
-                  className={
-                    type === "campsite"
-                      ? "text-green-600"
-                      : type === "gym"
-                        ? "text-blue-600"
-                        : "text-orange-600"
-                  }
-                />
-                <span>{label}</span>
-              </label>
-            ))}
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-stone-light">
+          <span className="text-sm font-semibold text-charcoal">Map Layers</span>
+        </div>
 
-            <div className="pt-1">
-              <div className="flex items-center justify-between text-xs text-muted mb-1">
+        <div className="px-4 py-3 space-y-4">
+
+          {/* Public Lands */}
+          <div>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Camping</p>
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={showPublicLands}
+                onChange={(e) => onPublicLandsChange(e.target.checked)}
+                className="rounded border-border text-terracotta focus:ring-terracotta/20"
+              />
+              <span className="flex items-center gap-2 text-sm text-charcoal">
+                {publicLandsLoading
+                  ? <Loader2 size={15} className="text-green-700 animate-spin" />
+                  : <MapPin size={15} className="text-green-700" />
+                }
+                Public Lands
+              </span>
+            </label>
+            <p className="mt-1 ml-7 text-xs text-muted leading-snug">
+              BLM &amp; USFS — free dispersed camping
+            </p>
+          </div>
+
+          {/* POIs */}
+          <div>
+            <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Nearby</p>
+            <div className="space-y-2">
+              {POI_OPTIONS.map(({ type, label, icon: Icon, color }) => (
+                <label key={type} className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={activeTypes.has(type)}
+                    onChange={() => toggleType(type)}
+                    disabled={!hasRoute}
+                    className="rounded border-border text-terracotta focus:ring-terracotta/20 disabled:opacity-40"
+                  />
+                  <span className={`flex items-center gap-2 text-sm text-charcoal ${!hasRoute ? "opacity-40" : ""}`}>
+                    <Icon size={15} className={color} />
+                    {label}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {/* Radius slider */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-xs text-muted mb-1.5">
                 <span>Search radius</span>
                 <span className="font-medium text-charcoal">{radiusMiles} mi</span>
               </div>
@@ -272,17 +238,19 @@ function POIOverlayControls({
                 max={50}
                 value={radiusMiles}
                 onChange={(e) => setRadiusMiles(Number(e.target.value))}
-                className="w-full h-1.5 rounded-full appearance-none bg-stone cursor-pointer accent-terracotta"
+                disabled={!hasRoute}
+                className="w-full h-1.5 rounded-full appearance-none bg-stone cursor-pointer accent-terracotta disabled:opacity-40"
               />
             </div>
 
             {!hasRoute && (
-              <p className="text-xs text-muted italic">
-                Add at least 2 destinations to search nearby
+              <p className="mt-2 text-xs text-muted italic">
+                Add 2+ destinations to search nearby
               </p>
             )}
           </div>
-        )}
+
+        </div>
       </div>
     </div>
   );

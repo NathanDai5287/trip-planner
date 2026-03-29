@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import type { Destination } from "@/lib/types";
 import toast from "react-hot-toast";
 import { removeDestination, updateDestinationNotes } from "@/lib/firestore";
@@ -28,7 +28,6 @@ function DestinationCard({
   onRemove,
   onHighlight,
 }: DestinationCardProps) {
-  const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState(destination.notes);
   const [isDeleting, setIsDeleting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,17 +87,16 @@ function DestinationCard({
   }, [destination.id, destination.name, tripId, onRemove]);
 
   return (
-    <div className="flex flex-col">
-      <div
-        ref={setNodeRef}
-        style={style}
-        className={`
-          flex items-start gap-2 rounded-lg border bg-cream p-3
-          border-l-4 border-l-terracotta
-          transition-all duration-200
-          ${isDragging ? "opacity-50 shadow-lg scale-[1.02]" : "shadow-sm"}
-          ${isHighlighted ? "ring-2 ring-terracotta/40 bg-stone-light" : "border-border"}
-        `}
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`
+        flex items-start gap-2 rounded-lg border bg-cream p-3
+        border-l-4 border-l-terracotta
+        transition-all duration-200
+        ${isDragging ? "opacity-50 shadow-lg scale-[1.02]" : "shadow-sm"}
+        ${isHighlighted ? "ring-2 ring-terracotta/40 bg-stone-light" : "border-border"}
+      `}
         onClick={() => onHighlight(destination.id)}
         role="button"
         tabIndex={0}
@@ -137,17 +135,14 @@ function DestinationCard({
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowNotes((v) => !v);
-            }}
-            className="mt-2 flex items-center gap-1 text-xs text-muted hover:text-charcoal transition-colors cursor-pointer"
-          >
-            {showNotes ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {notes ? "Edit notes" : "Add notes"}
-          </button>
+          <textarea
+            value={notes}
+            onChange={(e) => handleNotesChange(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Add notes about this stop..."
+            rows={3}
+            className="mt-2 w-full rounded-md border border-border bg-stone-light px-3 py-2 text-sm text-charcoal font-body placeholder:text-muted focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 focus:outline-none resize-none"
+          />
         </div>
 
         <button
@@ -162,20 +157,6 @@ function DestinationCard({
         >
           <Trash2 size={14} />
         </button>
-      </div>
-
-      {showNotes && (
-        <div className="ml-12 mr-8 mt-1 animate-fade-in">
-          <textarea
-            value={notes}
-            onChange={(e) => handleNotesChange(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Add notes about this stop..."
-            rows={3}
-            className="w-full rounded-md border border-border bg-stone-light px-3 py-2 text-sm text-charcoal font-body placeholder:text-muted focus:border-terracotta focus:ring-2 focus:ring-terracotta/20 focus:outline-none resize-none"
-          />
-        </div>
-      )}
     </div>
   );
 }

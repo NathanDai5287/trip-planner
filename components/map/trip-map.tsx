@@ -11,7 +11,7 @@ import {
   type MapRef,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Tent, Dumbbell, BookOpen } from "lucide-react";
+import { Dumbbell, BookOpen } from "lucide-react";
 import type { Destination, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 import { POIOverlayControls } from "./poi-overlay-controls";
@@ -38,7 +38,6 @@ const MAP_STYLE = {
 };
 
 const POI_ICON_CONFIG = {
-  campsite: { icon: Tent, color: "bg-green-600", borderColor: "border-green-400" },
   gym: { icon: Dumbbell, color: "bg-blue-600", borderColor: "border-blue-400" },
   library: { icon: BookOpen, color: "bg-orange-600", borderColor: "border-orange-400" },
 } as const;
@@ -288,39 +287,17 @@ function TripMap({
         </Source>
       )}
 
-      {/* Public lands toggle */}
-      <div className="absolute top-3 left-3 z-10">
-        <button
-          onClick={() => {
-            if (!showPublicLands) setPublicLandsLoading(true);
-            setShowPublicLands((v) => !v);
-          }}
-          className={`
-            flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow
-            border transition-colors
-            ${showPublicLands
-              ? "bg-green-700 text-white border-green-500"
-              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-            }
-          `}
-        >
-          {publicLandsLoading && showPublicLands ? (
-            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
-          ) : (
-            <Tent size={12} />
-          )}
-          Public Lands
-        </button>
-      </div>
-
       {/* POI overlay controls */}
       <POIOverlayControls
         destinations={destinations}
         routes={routes}
         onPoisChange={onPoisChange}
+        showPublicLands={showPublicLands}
+        onPublicLandsChange={(show) => {
+          if (show) setPublicLandsLoading(true);
+          setShowPublicLands(show);
+        }}
+        publicLandsLoading={publicLandsLoading}
       />
     </Map>
   );

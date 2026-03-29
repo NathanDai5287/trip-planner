@@ -26,7 +26,7 @@ export interface Trip {
 export interface PointOfInterest {
   id: string;
   name: string;
-  type: "campsite" | "gym" | "library";
+  type: "gym" | "library";
   lat: number;
   lng: number;
   tags: Record<string, string>;

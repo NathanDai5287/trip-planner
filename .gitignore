@@ -43,3 +43,4 @@ next-env.d.ts
 # raw GIS source data (large, not needed in repo)
 raw-data/
 scripts/.venv
+scripts/raw_data/
