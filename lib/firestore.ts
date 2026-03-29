@@ -32,7 +32,13 @@ function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
     totalDays: (data.totalDays as number) ?? 1,
     budget: (data.budget as BudgetData) ?? null,
     packingList: (data.packingList as PackingItem[]) ?? [],
-    routes: (data.routes as RouteSegment[]) ?? [],
+    routes: ((data.routes ?? []) as { fromId: string; toId: string; duration: number; distance: number; geometry: number[] }[]).map((r) => ({
+      fromId: r.fromId,
+      toId: r.toId,
+      duration: r.duration,
+      distance: r.distance,
+      geometry: Array.from({ length: r.geometry.length / 2 }, (_, i) => [r.geometry[i * 2], r.geometry[i * 2 + 1]] as [number, number]),
+    })),
     createdAt: (data.createdAt as { toDate(): Date })?.toDate?.() || new Date(),
     updatedAt: (data.updatedAt as { toDate(): Date })?.toDate?.() || new Date(),
   };
@@ -264,9 +270,19 @@ export async function updateBudget(tripId: string, budget: BudgetData) {
 
 // ── Routes ──
 
+// Firestore does not support arrays-of-arrays, so geometry is flattened to
+// a plain number[] [lng1,lat1, lng2,lat2, ...] before writing and reconstructed on read.
+
 export async function updateRoutes(tripId: string, routes: RouteSegment[]) {
+  const stored = routes.map((r) => ({
+    fromId: r.fromId,
+    toId: r.toId,
+    duration: r.duration,
+    distance: r.distance,
+    geometry: r.geometry.flat(),
+  }));
   await updateDoc(doc(db, "trips", tripId), {
-    routes,
+    routes: stored,
     updatedAt: serverTimestamp(),
   });
 }
