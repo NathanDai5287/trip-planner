@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type Modifier,
 } from "@dnd-kit/core";
 import {
@@ -78,6 +79,7 @@ function DestinationList({
   onInsertDayBefore,
 }: DestinationListProps) {
   const [collapsedDays, setCollapsedDays] = useState<Set<number>>(new Set());
+  const lastOverIdRef = useRef<string | null>(null);
 
   const toggleCollapse = useCallback((dayIndex: number) => {
     setCollapsedDays((prev) => {
@@ -106,23 +108,29 @@ function DestinationList({
 
   const flatSorted = useMemo(() => dayGroups.flat(), [dayGroups]);
 
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    if (event.over) lastOverIdRef.current = String(event.over.id);
+  }, []);
+
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
+      const { active } = event;
+      // Fall back to last tracked over when cursor is on a non-sortable element (e.g. day header)
+      const overId = event.over ? String(event.over.id) : lastOverIdRef.current;
+      lastOverIdRef.current = null;
+      if (!overId || active.id === overId) return;
 
       const oldIndex = flatSorted.findIndex((d) => d.id === active.id);
-      const newIndex = flatSorted.findIndex((d) => d.id === over.id);
+      const newIndex = flatSorted.findIndex((d) => d.id === overId);
       if (oldIndex === -1 || newIndex === -1) return;
 
       const reordered = arrayMove(flatSorted, oldIndex, newIndex);
-      const overDest = flatSorted[newIndex];
-      const targetDayIndex = overDest.dayIndex;
+      const targetDayIndex = flatSorted[newIndex].dayIndex;
 
       const updated = reordered.map((d, i) => ({
         ...d,
         sortOrder: i,
-        dayIndex: d.id === active.id ? targetDayIndex : d.dayIndex,
+        dayIndex: d.id === String(active.id) ? targetDayIndex : d.dayIndex,
       }));
 
       onReorder(updated);
@@ -175,7 +183,9 @@ function DestinationList({
       sensors={sensors}
       collisionDetection={closestCenter}
       modifiers={[restrictToVerticalAxis]}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => { lastOverIdRef.current = null; }}
     >
       <SortableContext items={flatSorted.map((d) => d.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-1">
