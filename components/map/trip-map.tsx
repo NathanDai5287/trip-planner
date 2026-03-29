@@ -11,7 +11,7 @@ import {
   type MapRef,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Dumbbell, BookOpen } from "lucide-react";
+import { Dumbbell, BookOpen, Mountain } from "lucide-react";
 import type { Destination, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 import { POIOverlayControls } from "./poi-overlay-controls";
@@ -38,8 +38,9 @@ const MAP_STYLE = {
 };
 
 const POI_ICON_CONFIG = {
-  gym: { icon: Dumbbell, color: "bg-blue-600", borderColor: "border-blue-400" },
-  library: { icon: BookOpen, color: "bg-orange-600", borderColor: "border-orange-400" },
+  gym:     { icon: Dumbbell,  color: "bg-blue-600",    borderColor: "border-blue-400" },
+  library: { icon: BookOpen,  color: "bg-orange-600",  borderColor: "border-orange-400" },
+  peak:    { icon: Mountain,  color: "bg-emerald-700", borderColor: "border-emerald-500" },
 } as const;
 
 interface TripMapProps {

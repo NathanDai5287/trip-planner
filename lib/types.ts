@@ -69,10 +69,10 @@ export interface Trip {
 export interface PointOfInterest {
   id: string;
   name: string;
-  type: "gym" | "library";
+  type: POIType;
   lat: number;
   lng: number;
   tags: Record<string, string>;
 }
 
-export type POIType = PointOfInterest["type"];
+export type POIType = "gym" | "library" | "peak";

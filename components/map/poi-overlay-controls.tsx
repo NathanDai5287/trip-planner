@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Dumbbell, BookOpen, MapPin, Loader2 } from "lucide-react";
+import { Dumbbell, BookOpen, MapPin, Loader2, Mountain } from "lucide-react";
 import type { POIType, PointOfInterest } from "@/lib/types";
-import type { RouteSegment } from "@/components/trip/trip-editor";
+import type { RouteSegment } from "@/lib/types";
 import type { Destination } from "@/lib/types";
 
 interface POIOverlayControlsProps {
@@ -16,15 +16,22 @@ interface POIOverlayControlsProps {
 }
 
 const POI_OPTIONS: { type: POIType; label: string; icon: typeof Dumbbell; color: string }[] = [
-  { type: "gym",     label: "Gyms",      icon: Dumbbell, color: "text-blue-600" },
-  { type: "library", label: "Libraries", icon: BookOpen,  color: "text-orange-600" },
+  { type: "gym",     label: "Gyms",      icon: Dumbbell,  color: "text-blue-600" },
+  { type: "library", label: "Libraries", icon: BookOpen,   color: "text-orange-600" },
+  { type: "peak",    label: "Peaks",     icon: Mountain,   color: "text-emerald-700" },
 ];
 
 const MILES_TO_METERS = 1609.34;
 
 // ── Static dataset loaders (module-level, fetched once per session) ───────────
 
-type DatasetKey = "gym" | "library";
+type DatasetKey = "gym" | "library" | "peak";
+
+const DATASET_URLS: Record<DatasetKey, string> = {
+  gym:     "/data/planet_fitness.geojson",
+  library: "/data/libraries.geojson",
+  peak:    "/data/peaks.geojson",
+};
 
 const _datasets: Partial<Record<DatasetKey, PointOfInterest[]>> = {};
 const _fetches: Partial<Record<DatasetKey, Promise<PointOfInterest[]>>> = {};
@@ -33,23 +40,21 @@ function loadDataset(type: DatasetKey): Promise<PointOfInterest[]> {
   if (_datasets[type]) return Promise.resolve(_datasets[type]!);
   if (_fetches[type]) return _fetches[type]!;
 
-  const url = type === "gym" ? "/data/planet_fitness.geojson" : "/data/libraries.geojson";
-
-  _fetches[type] = fetch(url)
+  _fetches[type] = fetch(DATASET_URLS[type])
     .then((r) => r.json())
     .then((data) => {
-      _datasets[type] = (
-        data.features as {
-          geometry: { coordinates: [number, number] };
-          properties: Record<string, string>;
-        }[]
-      ).map((f, i) => ({
-        id: f.properties.slug ?? f.properties.id ?? String(i),
-        name: f.properties.name,
+      _datasets[type] = (data.features as {
+        geometry: { coordinates: [number, number] };
+        properties: Record<string, unknown>;
+      }[]).map((f, i) => ({
+        id: String(f.properties.id ?? f.properties.slug ?? i),
+        name: String(f.properties.name),
         type,
         lat: f.geometry.coordinates[1],
         lng: f.geometry.coordinates[0],
-        tags: f.properties,
+        tags: Object.fromEntries(
+          Object.entries(f.properties).map(([k, v]) => [k, String(v ?? "")])
+        ),
       }));
       return _datasets[type]!;
     });
@@ -102,7 +107,7 @@ function POIOverlayControls({
   const [radiusMiles, setRadiusMiles] = useState(15);
 
   // Per-type filtered results and the bbox key they were computed for
-  const filteredRef = useRef<Record<DatasetKey, PointOfInterest[]>>({ gym: [], library: [] });
+  const filteredRef = useRef<Record<DatasetKey, PointOfInterest[]>>({ gym: [], library: [], peak: [] });
   const bboxKeyRef = useRef<string>("");
 
   const hasRoute = destinations.length >= 2;
@@ -125,7 +130,7 @@ function POIOverlayControls({
   const emitVisible = useCallback(
     (active: Set<POIType>) => {
       const visible: PointOfInterest[] = [];
-      for (const type of (["gym", "library"] as DatasetKey[])) {
+      for (const type of (["gym", "library", "peak"] as DatasetKey[])) {
         if (active.has(type)) visible.push(...filteredRef.current[type]);
       }
       onPoisChange(visible);
@@ -136,7 +141,7 @@ function POIOverlayControls({
   // Refilter both datasets whenever route/radius changes
   useEffect(() => {
     if (!hasRoute || routeCoordinates.length < 2) {
-      filteredRef.current = { gym: [], library: [] };
+      filteredRef.current = { gym: [], library: [], peak: [] };
       bboxKeyRef.current = "";
       emitVisible(activeTypes);
       return;
@@ -148,17 +153,14 @@ function POIOverlayControls({
     const bbox = computeBbox(routeCoordinates, radiusMeters);
     const key = currentBboxKey;
 
-    for (const type of (["gym", "library"] as DatasetKey[])) {
+    for (const type of (["gym", "library", "peak"] as DatasetKey[])) {
       if (_datasets[type]) {
         filteredRef.current[type] = filterByBbox(_datasets[type]!, bbox);
-        if (type === "library" || Object.keys(_datasets).length === 2) {
-          bboxKeyRef.current = key;
-          emitVisible(activeTypes);
-        }
+        bboxKeyRef.current = key;
+        emitVisible(activeTypes);
       } else {
         loadDataset(type).then((all) => {
           filteredRef.current[type] = filterByBbox(all, bbox);
-          // Only update key once both are done (or on each load — still correct)
           bboxKeyRef.current = key;
           emitVisible(activeTypes);
         });
