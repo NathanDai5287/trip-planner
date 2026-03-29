@@ -23,10 +23,15 @@ export default function DashboardPage() {
       return;
     }
 
-    getUserTrips(user.uid).then((t) => {
-      setTrips(t);
-      setLoading(false);
-    });
+    getUserTrips(user.uid)
+      .then((t) => {
+        setTrips(t);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load trips:", err);
+        setLoading(false);
+      });
   }, [user, authLoading, router]);
 
   if (authLoading || (!user && !loading)) {
