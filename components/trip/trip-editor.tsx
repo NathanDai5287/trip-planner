@@ -306,16 +306,20 @@ function TripEditor({ trip }: TripEditorProps) {
             </nav>
           </div>
 
+          {/* Search bar — fixed above scroll, only in itinerary tab */}
+          {activeTab === "itinerary" && (
+            <div className="px-5 pt-3 pb-2 border-b border-border">
+              <PlaceSearch
+                tripId={trip.id}
+                onDestinationAdded={handleDestinationAdded}
+              />
+            </div>
+          )}
+
           {/* Tab content */}
           <div className="flex-1 overflow-y-auto px-5 pb-3">
             {activeTab === "itinerary" && (
-              <>
-                <div className="pt-3 pb-3">
-                  <PlaceSearch
-                    tripId={trip.id}
-                    onDestinationAdded={handleDestinationAdded}
-                  />
-                </div>
+              <div className="pt-2">
                 <DestinationList
                   tripId={trip.id}
                   destinations={destinations}
@@ -330,7 +334,7 @@ function TripEditor({ trip }: TripEditorProps) {
                   onRemoveDay={handleRemoveDay}
                   onInsertDayBefore={handleInsertDayBefore}
                 />
-              </>
+              </div>
             )}
             {activeTab === "budget" && (
               <BudgetPanel

@@ -1,15 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   closestCenter,
+  useDroppable,
   PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragOverEvent,
   type Modifier,
 } from "@dnd-kit/core";
 import {
@@ -47,17 +47,42 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   x: 0,
 });
 
-function DriveTimeDivider({ seconds, loading }: { seconds: number | null; loading: boolean }) {
+// Makes the day header row a real droppable zone so the DnD system
+// detects drops there even though there's no sortable item underneath.
+function DayDropZone({
+  dayIndex,
+  children,
+}: {
+  dayIndex: number;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `day-zone-${dayIndex}` });
   return (
-    <div className="flex items-center gap-2 py-0.5 px-1">
+    <div
+      ref={setNodeRef}
+      className={`rounded transition-colors ${isOver ? "bg-terracotta/5" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DriveTimeDivider({
+  seconds,
+  loading,
+}: {
+  seconds: number | null;
+  loading: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 py-0.5 px-1 pointer-events-none">
       <div className="flex-1 h-px bg-border/60" />
       <span className="text-xs text-muted/50 shrink-0 tabular-nums">
-        {loading && seconds === null
-          ? <Loader2 size={10} className="animate-spin" />
-          : seconds !== null
-            ? formatDuration(seconds)
-            : null
-        }
+        {loading && seconds === null ? (
+          <Loader2 size={10} className="animate-spin" />
+        ) : seconds !== null ? (
+          formatDuration(seconds)
+        ) : null}
       </span>
       <div className="flex-1 h-px bg-border/60" />
     </div>
@@ -79,7 +104,6 @@ function DestinationList({
   onInsertDayBefore,
 }: DestinationListProps) {
   const [collapsedDays, setCollapsedDays] = useState<Set<number>>(new Set());
-  const lastOverIdRef = useRef<string | null>(null);
 
   const toggleCollapse = useCallback((dayIndex: number) => {
     setCollapsedDays((prev) => {
@@ -108,33 +132,9 @@ function DestinationList({
 
   const flatSorted = useMemo(() => dayGroups.flat(), [dayGroups]);
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    if (event.over) lastOverIdRef.current = String(event.over.id);
-  }, []);
-
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active } = event;
-      // Fall back to last tracked over when cursor is on a non-sortable element (e.g. day header)
-      const overId = event.over ? String(event.over.id) : lastOverIdRef.current;
-      lastOverIdRef.current = null;
-      if (!overId || active.id === overId) return;
-
-      const oldIndex = flatSorted.findIndex((d) => d.id === active.id);
-      const newIndex = flatSorted.findIndex((d) => d.id === overId);
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      const reordered = arrayMove(flatSorted, oldIndex, newIndex);
-      const targetDayIndex = flatSorted[newIndex].dayIndex;
-
-      const updated = reordered.map((d, i) => ({
-        ...d,
-        sortOrder: i,
-        dayIndex: d.id === String(active.id) ? targetDayIndex : d.dayIndex,
-      }));
-
+  const save = useCallback(
+    async (updated: Destination[]) => {
       onReorder(updated);
-
       try {
         await reorderDestinations(
           tripId,
@@ -145,7 +145,62 @@ function DestinationList({
         toast.error("Failed to reorder destinations");
       }
     },
-    [flatSorted, destinations, tripId, onReorder],
+    [tripId, destinations, onReorder],
+  );
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const overId = String(over.id);
+      const activeId = String(active.id);
+
+      // ── Drop on a day-zone header ──────────────────────────────────────
+      if (overId.startsWith("day-zone-")) {
+        const targetDay = parseInt(overId.replace("day-zone-", ""), 10);
+        const dragged = flatSorted.find((d) => d.id === activeId);
+        if (!dragged || dragged.dayIndex === targetDay) return;
+
+        // Place dragged item at the end of the target day
+        const without = flatSorted.filter((d) => d.id !== activeId);
+        const insertAt = without.findLastIndex((d) => d.dayIndex === targetDay);
+        const after = insertAt === -1
+          ? without.findIndex((d) => d.dayIndex > targetDay) // before next day
+          : insertAt + 1;
+
+        const reordered =
+          after === -1
+            ? [...without, dragged]
+            : [...without.slice(0, after), dragged, ...without.slice(after)];
+
+        const updated = reordered.map((d, i) => ({
+          ...d,
+          sortOrder: i,
+          dayIndex: d.id === activeId ? targetDay : d.dayIndex,
+        }));
+
+        await save(updated);
+        return;
+      }
+
+      // ── Drop on a specific card ────────────────────────────────────────
+      const oldIndex = flatSorted.findIndex((d) => d.id === activeId);
+      const newIndex = flatSorted.findIndex((d) => d.id === overId);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = arrayMove(flatSorted, oldIndex, newIndex);
+      const targetDay = flatSorted[newIndex].dayIndex;
+
+      const updated = reordered.map((d, i) => ({
+        ...d,
+        sortOrder: i,
+        dayIndex: d.id === activeId ? targetDay : d.dayIndex,
+      }));
+
+      await save(updated);
+    },
+    [flatSorted, save],
   );
 
   function getDriveTime(fromId: string, toId: string): number | null {
@@ -183,11 +238,12 @@ function DestinationList({
       sensors={sensors}
       collisionDetection={closestCenter}
       modifiers={[restrictToVerticalAxis]}
-      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => { lastOverIdRef.current = null; }}
     >
-      <SortableContext items={flatSorted.map((d) => d.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext
+        items={flatSorted.map((d) => d.id)}
+        strategy={verticalListSortingStrategy}
+      >
         <div className="flex flex-col gap-1">
           {dayGroups.map((dayDests, dayIndex) => {
             const dayStartIndex = runningIndex;
@@ -202,21 +258,23 @@ function DestinationList({
 
             return (
               <div key={dayIndex}>
-                {/* Cross-day drive time divider */}
                 {dayIndex > 0 && (
                   <DriveTimeDivider seconds={crossDayTime} loading={routesLoading} />
                 )}
 
-                <DayHeader
-                  dayIndex={dayIndex}
-                  dayDriveTime={getDayDriveTime(dayDests)}
-                  destinationCount={dayDests.length}
-                  isOnlyDay={totalDays <= 1}
-                  collapsed={collapsed}
-                  onToggleCollapse={() => toggleCollapse(dayIndex)}
-                  onInsertDayBefore={() => onInsertDayBefore(dayIndex)}
-                  onRemoveDay={() => onRemoveDay(dayIndex)}
-                />
+                {/* Day header wrapped in a droppable zone */}
+                <DayDropZone dayIndex={dayIndex}>
+                  <DayHeader
+                    dayIndex={dayIndex}
+                    dayDriveTime={getDayDriveTime(dayDests)}
+                    destinationCount={dayDests.length}
+                    isOnlyDay={totalDays <= 1}
+                    collapsed={collapsed}
+                    onToggleCollapse={() => toggleCollapse(dayIndex)}
+                    onInsertDayBefore={() => onInsertDayBefore(dayIndex)}
+                    onRemoveDay={() => onRemoveDay(dayIndex)}
+                  />
+                </DayDropZone>
 
                 {!collapsed && (
                   <div className="flex flex-col ml-1">
@@ -238,7 +296,10 @@ function DestinationList({
                             onHighlight={onHighlight}
                           />
                           {nextDest && (
-                            <DriveTimeDivider seconds={driveTime} loading={routesLoading} />
+                            <DriveTimeDivider
+                              seconds={driveTime}
+                              loading={routesLoading}
+                            />
                           )}
                         </div>
                       );
