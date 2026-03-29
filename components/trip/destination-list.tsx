@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -23,7 +23,7 @@ import toast from "react-hot-toast";
 import { reorderDestinations } from "@/lib/firestore";
 import { DestinationCard } from "./destination-card";
 import { DayHeader } from "./day-header";
-import { DriveTimeBadge } from "./drive-time-badge";
+import { formatDuration } from "@/lib/format-duration";
 import type { RouteSegment } from "./trip-editor";
 
 interface DestinationListProps {
@@ -46,6 +46,23 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   x: 0,
 });
 
+function DriveTimeDivider({ seconds, loading }: { seconds: number | null; loading: boolean }) {
+  return (
+    <div className="flex items-center gap-2 py-0.5 px-1">
+      <div className="flex-1 h-px bg-border/60" />
+      <span className="text-xs text-muted/50 shrink-0 tabular-nums">
+        {loading && seconds === null
+          ? <Loader2 size={10} className="animate-spin" />
+          : seconds !== null
+            ? formatDuration(seconds)
+            : null
+        }
+      </span>
+      <div className="flex-1 h-px bg-border/60" />
+    </div>
+  );
+}
+
 function DestinationList({
   tripId,
   destinations,
@@ -60,35 +77,33 @@ function DestinationList({
   onRemoveDay,
   onInsertDayBefore,
 }: DestinationListProps) {
+  const [collapsedDays, setCollapsedDays] = useState<Set<number>>(new Set());
+
+  const toggleCollapse = useCallback((dayIndex: number) => {
+    setCollapsedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(dayIndex)) next.delete(dayIndex);
+      else next.add(dayIndex);
+      return next;
+    });
+  }, []);
+
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // Group destinations by day
   const dayGroups = useMemo(() => {
     const groups: Destination[][] = Array.from({ length: totalDays }, () => []);
     for (const dest of destinations) {
       const day = dest.dayIndex;
-      if (day >= 0 && day < totalDays) {
-        groups[day].push(dest);
-      } else {
-        // Fallback: put in last day
-        groups[totalDays - 1].push(dest);
-      }
+      if (day >= 0 && day < totalDays) groups[day].push(dest);
+      else groups[totalDays - 1].push(dest);
     }
-    // Sort each day's destinations by sortOrder
-    for (const group of groups) {
-      group.sort((a, b) => a.sortOrder - b.sortOrder);
-    }
+    for (const group of groups) group.sort((a, b) => a.sortOrder - b.sortOrder);
     return groups;
   }, [destinations, totalDays]);
 
-  // Flat sorted list for dnd-kit (all destinations in display order)
   const flatSorted = useMemo(() => dayGroups.flat(), [dayGroups]);
 
   const handleDragEnd = useCallback(
@@ -101,8 +116,6 @@ function DestinationList({
       if (oldIndex === -1 || newIndex === -1) return;
 
       const reordered = arrayMove(flatSorted, oldIndex, newIndex);
-
-      // Determine which day the destination landed in by checking neighbors
       const overDest = flatSorted[newIndex];
       const targetDayIndex = overDest.dayIndex;
 
@@ -135,13 +148,12 @@ function DestinationList({
   function getDayDriveTime(dayDests: Destination[]): number {
     let total = 0;
     for (let i = 0; i < dayDests.length - 1; i++) {
-      const time = getDriveTime(dayDests[i].id, dayDests[i + 1].id);
-      if (time) total += time;
+      const t = getDriveTime(dayDests[i].id, dayDests[i + 1].id);
+      if (t) total += t;
     }
     return total;
   }
 
-  // Compute running index for continuous numbering
   let runningIndex = 0;
 
   if (destinations.length === 0) {
@@ -150,9 +162,7 @@ function DestinationList({
         <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-stone">
           <MapPin size={24} className="text-muted" />
         </div>
-        <p className="text-sm font-medium text-charcoal mb-1">
-          No destinations yet
-        </p>
+        <p className="text-sm font-medium text-charcoal mb-1">No destinations yet</p>
         <p className="text-xs text-muted max-w-[200px]">
           Search for a place above to start planning your trip
         </p>
@@ -167,34 +177,24 @@ function DestinationList({
       modifiers={[restrictToVerticalAxis]}
       onDragEnd={handleDragEnd}
     >
-      <SortableContext
-        items={flatSorted.map((d) => d.id)}
-        strategy={verticalListSortingStrategy}
-      >
+      <SortableContext items={flatSorted.map((d) => d.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-1">
           {dayGroups.map((dayDests, dayIndex) => {
             const dayStartIndex = runningIndex;
             runningIndex += dayDests.length;
+            const collapsed = collapsedDays.has(dayIndex);
 
-            // Cross-day drive time: from last dest of previous day to first of this day
             const prevDay = dayIndex > 0 ? dayGroups[dayIndex - 1] : null;
             const crossDayTime =
               prevDay && prevDay.length > 0 && dayDests.length > 0
-                ? getDriveTime(
-                    prevDay[prevDay.length - 1].id,
-                    dayDests[0].id,
-                  )
+                ? getDriveTime(prevDay[prevDay.length - 1].id, dayDests[0].id)
                 : null;
 
             return (
               <div key={dayIndex}>
-                {/* Cross-day drive time */}
-                {crossDayTime !== null && (
-                  <div className="flex justify-center py-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-stone/60 px-2 py-0.5 text-xs text-muted/70 italic">
-                      <DriveTimeBadge seconds={crossDayTime} />
-                    </span>
-                  </div>
+                {/* Cross-day drive time divider */}
+                {dayIndex > 0 && (
+                  <DriveTimeDivider seconds={crossDayTime} loading={routesLoading} />
                 )}
 
                 <DayHeader
@@ -202,53 +202,48 @@ function DestinationList({
                   dayDriveTime={getDayDriveTime(dayDests)}
                   destinationCount={dayDests.length}
                   isOnlyDay={totalDays <= 1}
+                  collapsed={collapsed}
+                  onToggleCollapse={() => toggleCollapse(dayIndex)}
                   onInsertDayBefore={() => onInsertDayBefore(dayIndex)}
                   onRemoveDay={() => onRemoveDay(dayIndex)}
                 />
 
-                <div className="flex flex-col gap-0 ml-1">
-                  {dayDests.map((dest, i) => {
-                    const globalIndex = dayStartIndex + i;
-                    const nextDest = dayDests[i + 1];
-                    const driveTime = nextDest
-                      ? getDriveTime(dest.id, nextDest.id)
-                      : null;
+                {!collapsed && (
+                  <div className="flex flex-col ml-1">
+                    {dayDests.map((dest, i) => {
+                      const globalIndex = dayStartIndex + i;
+                      const nextDest = dayDests[i + 1];
+                      const driveTime = nextDest
+                        ? getDriveTime(dest.id, nextDest.id)
+                        : null;
 
-                    return (
-                      <div key={dest.id} className="flex flex-col">
-                        <DestinationCard
-                          destination={dest}
-                          tripId={tripId}
-                          index={globalIndex}
-                          isHighlighted={highlightedId === dest.id}
-                          onRemove={onRemove}
-                          onHighlight={onHighlight}
-                        />
-                        {nextDest && (
-                          <div className="flex items-center justify-center py-1">
-                            {routesLoading && driveTime === null ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-muted/50">
-                                <Loader2 size={10} className="animate-spin" />
-                              </span>
-                            ) : driveTime !== null ? (
-                              <DriveTimeBadge seconds={driveTime} />
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {dayDests.length === 0 && (
-                    <p className="text-xs text-muted italic py-2 pl-2">
-                      No stops planned for this day
-                    </p>
-                  )}
-                </div>
+                      return (
+                        <div key={dest.id}>
+                          <DestinationCard
+                            destination={dest}
+                            tripId={tripId}
+                            index={globalIndex}
+                            isHighlighted={highlightedId === dest.id}
+                            onRemove={onRemove}
+                            onHighlight={onHighlight}
+                          />
+                          {nextDest && (
+                            <DriveTimeDivider seconds={driveTime} loading={routesLoading} />
+                          )}
+                        </div>
+                      );
+                    })}
+                    {dayDests.length === 0 && (
+                      <p className="text-xs text-muted italic py-2 pl-2">
+                        No stops planned for this day
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
 
-          {/* Add Day button */}
           <button
             type="button"
             onClick={onAddDay}

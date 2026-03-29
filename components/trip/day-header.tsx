@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ChevronRight } from "lucide-react";
 import { formatDuration } from "@/lib/format-duration";
 
 interface DayHeaderProps {
@@ -8,6 +8,8 @@ interface DayHeaderProps {
   dayDriveTime: number;
   destinationCount: number;
   isOnlyDay: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onInsertDayBefore: () => void;
   onRemoveDay: () => void;
 }
@@ -17,6 +19,8 @@ function DayHeader({
   dayDriveTime,
   destinationCount,
   isOnlyDay,
+  collapsed,
+  onToggleCollapse,
   onInsertDayBefore,
   onRemoveDay,
 }: DayHeaderProps) {
@@ -32,8 +36,17 @@ function DayHeader({
         <Plus size={14} />
       </button>
 
-      <div className="flex-1 flex items-center gap-2">
-        <h3 className="font-display text-sm font-semibold text-charcoal tracking-wide uppercase">
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        className="flex-1 flex items-center gap-1.5 min-w-0 text-left group"
+        aria-label={collapsed ? `Expand Day ${dayIndex + 1}` : `Collapse Day ${dayIndex + 1}`}
+      >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 text-muted transition-transform duration-150 ${collapsed ? "" : "rotate-90"}`}
+        />
+        <h3 className="font-display text-sm font-semibold text-charcoal tracking-wide uppercase group-hover:text-terracotta transition-colors">
           Day {dayIndex + 1}
         </h3>
         <div className="flex-1 h-px bg-border" />
@@ -42,7 +55,12 @@ function DayHeader({
             {formatDuration(dayDriveTime)}
           </span>
         )}
-      </div>
+        {collapsed && destinationCount > 0 && (
+          <span className="text-xs text-muted/60 shrink-0">
+            {destinationCount} stop{destinationCount !== 1 ? "s" : ""}
+          </span>
+        )}
+      </button>
 
       {!isOnlyDay && (
         <button
