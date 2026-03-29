@@ -25,10 +25,11 @@ function buildOverpassQuery(
   for (const type of types) {
     switch (type) {
       case "campsite":
+        // fee=no or fee=yes but with free conditional access
+        // Exclude the [!"fee"] query — too broad, returns thousands of nodes
         queries.push(
           `node["tourism"="camp_site"]["fee"="no"](${bboxStr});`,
           `node["tourism"="camp_site"]["fee:conditional"](${bboxStr});`,
-          `node["tourism"="camp_site"][!"fee"](${bboxStr});`,
         );
         break;
       case "gym":
@@ -44,7 +45,7 @@ function buildOverpassQuery(
     }
   }
 
-  return `[out:json][timeout:25];\n(\n  ${queries.join("\n  ")}\n);\nout body;`;
+  return `[out:json][timeout:25];\n(\n  ${queries.join("\n  ")}\n);\nout body 200;`;
 }
 
 export async function POST(request: NextRequest) {

@@ -19,6 +19,7 @@ const POI_OPTIONS: { type: POIType; label: string; icon: typeof Tent }[] = [
 ];
 
 const MILES_TO_METERS = 1609.34;
+const ALL_TYPES: POIType[] = ["campsite", "gym", "library"];
 
 function POIOverlayControls({
   destinations,
@@ -29,10 +30,14 @@ function POIOverlayControls({
   const [radiusMiles, setRadiusMiles] = useState(15);
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Cache: all fetched POIs keyed by type
+  const cacheRef = useRef<Map<POIType, PointOfInterest[]>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
+  // Track what radius+route the cache was built for
+  const cacheKeyRef = useRef<string>("");
 
   const hasRoute = routes.length > 0;
-  const hasActiveTypes = activeTypes.size > 0;
 
   const toggleType = useCallback((type: POIType) => {
     setActiveTypes((prev) => {
@@ -51,12 +56,19 @@ function POIOverlayControls({
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((d) => [d.lat, d.lng]);
 
-  // Fetch POIs when toggles/radius/route change
+  // Cache key based on route + radius
+  const currentCacheKey = `${routeCoordinates.map(c => c.join(",")).join("|")}@${radiusMiles}`;
+
+  // Prefetch ALL POI types whenever route or radius changes
   useEffect(() => {
-    if (!hasActiveTypes || !hasRoute || routeCoordinates.length < 2) {
-      onPoisChange([]);
+    if (!hasRoute || routeCoordinates.length < 2) {
+      cacheRef.current.clear();
+      cacheKeyRef.current = "";
       return;
     }
+
+    // Skip if cache is already valid for this route+radius
+    if (cacheKeyRef.current === currentCacheKey) return;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -65,7 +77,7 @@ function POIOverlayControls({
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const fetchPois = async () => {
+    const prefetch = async () => {
       setIsLoading(true);
       try {
         const res = await fetch("/api/overpass", {
@@ -74,7 +86,7 @@ function POIOverlayControls({
           body: JSON.stringify({
             coordinates: routeCoordinates,
             radius: Math.round(radiusMiles * MILES_TO_METERS),
-            types: Array.from(activeTypes),
+            types: ALL_TYPES,
           }),
           signal: controller.signal,
         });
@@ -83,14 +95,25 @@ function POIOverlayControls({
 
         const data = await res.json();
         if (!controller.signal.aborted) {
-          onPoisChange(data.pois || []);
+          const allPois: PointOfInterest[] = data.pois || [];
+
+          // Split into cache by type
+          const newCache = new Map<POIType, PointOfInterest[]>();
+          for (const type of ALL_TYPES) {
+            newCache.set(type, allPois.filter((p: PointOfInterest) => p.type === type));
+          }
+          cacheRef.current = newCache;
+          cacheKeyRef.current = currentCacheKey;
+
+          // Update visible POIs based on active toggles
+          const visible = ALL_TYPES
+            .filter((t) => activeTypes.has(t))
+            .flatMap((t) => newCache.get(t) || []);
+          onPoisChange(visible);
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("Failed to fetch POIs:", err);
-        if (!controller.signal.aborted) {
-          onPoisChange([]);
-        }
+        console.error("Failed to prefetch POIs:", err);
       } finally {
         if (!controller.signal.aborted) {
           setIsLoading(false);
@@ -98,13 +121,25 @@ function POIOverlayControls({
       }
     };
 
-    // Debounce the fetch slightly to avoid rapid re-fetches during slider drag
-    const timer = setTimeout(fetchPois, 500);
+    const timer = setTimeout(prefetch, 500);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [hasActiveTypes, hasRoute, radiusMiles, activeTypes, routeCoordinates.length]);
+  }, [hasRoute, currentCacheKey]);
+
+  // When toggles change, just filter from cache — no network request
+  useEffect(() => {
+    if (!cacheRef.current.size) {
+      onPoisChange([]);
+      return;
+    }
+
+    const visible = ALL_TYPES
+      .filter((t) => activeTypes.has(t))
+      .flatMap((t) => cacheRef.current.get(t) || []);
+    onPoisChange(visible);
+  }, [activeTypes]);
 
   return (
     <div className="absolute bottom-4 left-4 z-10">
@@ -151,22 +186,20 @@ function POIOverlayControls({
               </label>
             ))}
 
-            {hasActiveTypes && (
-              <div className="pt-1">
-                <div className="flex items-center justify-between text-xs text-muted mb-1">
-                  <span>Search radius</span>
-                  <span className="font-medium text-charcoal">{radiusMiles} mi</span>
-                </div>
-                <input
-                  type="range"
-                  min={5}
-                  max={50}
-                  value={radiusMiles}
-                  onChange={(e) => setRadiusMiles(Number(e.target.value))}
-                  className="w-full h-1.5 rounded-full appearance-none bg-stone cursor-pointer accent-terracotta"
-                />
+            <div className="pt-1">
+              <div className="flex items-center justify-between text-xs text-muted mb-1">
+                <span>Search radius</span>
+                <span className="font-medium text-charcoal">{radiusMiles} mi</span>
               </div>
-            )}
+              <input
+                type="range"
+                min={5}
+                max={50}
+                value={radiusMiles}
+                onChange={(e) => setRadiusMiles(Number(e.target.value))}
+                className="w-full h-1.5 rounded-full appearance-none bg-stone cursor-pointer accent-terracotta"
+              />
+            </div>
 
             {!hasRoute && (
               <p className="text-xs text-muted italic">
