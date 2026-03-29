@@ -104,9 +104,8 @@ export function BudgetPanel({ tripId, budget, totalDays, routes, onChange }: Bud
     : 0;
   const foodCost = budget.food.perDayPerPerson * totalDays * budget.food.people;
   const lodgingCost = budget.lodging.perNight * budget.lodging.nights;
-  const parkingCost = budget.parking.perDay * totalDays;
   const laundryCost = budget.laundry.perLoad * budget.laundry.loads;
-  const subtotal = gasCost + foodCost + lodgingCost + parkingCost
+  const subtotal = gasCost + foodCost + lodgingCost + budget.parking.total
     + budget.attractions.total + budget.activities.total
     + budget.shopping.total + laundryCost
     + budget.tolls.total + budget.misc.total;
@@ -130,9 +129,8 @@ export function BudgetPanel({ tripId, budget, totalDays, routes, onChange }: Bud
         <Label>nights <N value={budget.lodging.nights} step={1} onChange={(v) => update({ lodging: { ...budget.lodging, nights: v } })} width="w-12" /></Label>
       </Row>
 
-      <Row label="Parking" cost={parkingCost}>
-        <Label>$/day <N value={budget.parking.perDay} step={5} onChange={(v) => update({ parking: { perDay: v } })} /></Label>
-        <Label className="opacity-60">{totalDays} days</Label>
+      <Row label="Parking" cost={budget.parking.total}>
+        <Label>$ <N value={budget.parking.total} step={5} width="w-20" onChange={(v) => update({ parking: { total: v } })} /></Label>
       </Row>
 
       <Row label="Attractions & Fees" cost={budget.attractions.total}>

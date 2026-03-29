@@ -14,7 +14,7 @@ export interface BudgetData {
   gas: { mpg: number; pricePerGallon: number };
   food: { perDayPerPerson: number; people: number };
   lodging: { perNight: number; nights: number };
-  parking: { perDay: number };
+  parking: { total: number };
   attractions: { total: number };
   activities: { total: number };
   shopping: { total: number };
@@ -27,7 +27,7 @@ export const DEFAULT_BUDGET: BudgetData = {
   gas:        { mpg: 28, pricePerGallon: 3.80 },
   food:       { perDayPerPerson: 30, people: 1 },
   lodging:    { perNight: 0, nights: 0 },
-  parking:    { perDay: 0 },
+  parking:    { total: 0 },
   attractions:{ total: 0 },
   activities: { total: 0 },
   shopping:   { total: 0 },
