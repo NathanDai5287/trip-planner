@@ -4,12 +4,21 @@ let lastOverpassRequest = 0;
 
 type POIType = "campsite" | "gym" | "library";
 
+// Convert meters to approximate degrees of latitude
+function metersToDegLat(meters: number): number {
+  return meters / 111_320;
+}
+
+// Convert meters to approximate degrees of longitude at a given latitude
+function metersToDegLng(meters: number, lat: number): number {
+  return meters / (111_320 * Math.cos((lat * Math.PI) / 180));
+}
+
 function buildOverpassQuery(
-  coordinates: [number, number][],
-  radius: number,
+  bbox: [number, number, number, number], // [south, west, north, east]
   types: POIType[],
 ): string {
-  const coordStr = coordinates.map(([lat, lng]) => `${lat},${lng}`).join(",");
+  const bboxStr = `${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]}`;
 
   const queries: string[] = [];
 
@@ -17,38 +26,25 @@ function buildOverpassQuery(
     switch (type) {
       case "campsite":
         queries.push(
-          `node["tourism"="camp_site"]["fee"="no"](around:${radius},${coordStr});`,
-          `node["tourism"="camp_site"]["fee:conditional"](around:${radius},${coordStr});`,
-          `node["tourism"="camp_site"][!"fee"](around:${radius},${coordStr});`,
+          `node["tourism"="camp_site"]["fee"="no"](${bboxStr});`,
+          `node["tourism"="camp_site"]["fee:conditional"](${bboxStr});`,
+          `node["tourism"="camp_site"][!"fee"](${bboxStr});`,
         );
         break;
       case "gym":
         queries.push(
-          `node["leisure"="fitness_centre"]["name"~"Planet Fitness|24 Hour Fitness|Anytime Fitness",i](around:${radius},${coordStr});`,
+          `node["leisure"="fitness_centre"]["name"~"Planet Fitness|24 Hour Fitness|Anytime Fitness",i](${bboxStr});`,
         );
         break;
       case "library":
         queries.push(
-          `node["amenity"="library"](around:${radius},${coordStr});`,
+          `node["amenity"="library"](${bboxStr});`,
         );
         break;
     }
   }
 
   return `[out:json][timeout:25];\n(\n  ${queries.join("\n  ")}\n);\nout body;`;
-}
-
-function simplifyCoordinates(
-  coords: [number, number][],
-  maxPoints: number,
-): [number, number][] {
-  if (coords.length <= maxPoints) return coords;
-  const step = (coords.length - 1) / (maxPoints - 1);
-  const result: [number, number][] = [];
-  for (let i = 0; i < maxPoints; i++) {
-    result.push(coords[Math.round(i * step)]);
-  }
-  return result;
 }
 
 export async function POST(request: NextRequest) {
@@ -88,8 +84,22 @@ export async function POST(request: NextRequest) {
   }
   lastOverpassRequest = Date.now();
 
-  const simplified = simplifyCoordinates(coordinates, 25);
-  const query = buildOverpassQuery(simplified, radius, types);
+  // Compute bounding box from route coordinates expanded by radius
+  const lats = coordinates.map(([lat]) => lat);
+  const lngs = coordinates.map(([, lng]) => lng);
+  const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+
+  const padLat = metersToDegLat(radius);
+  const padLng = metersToDegLng(radius, centerLat);
+
+  const bbox: [number, number, number, number] = [
+    Math.min(...lats) - padLat,
+    Math.min(...lngs) - padLng,
+    Math.max(...lats) + padLat,
+    Math.max(...lngs) + padLng,
+  ];
+
+  const query = buildOverpassQuery(bbox, types);
 
   try {
     const response = await fetch("https://overpass-api.de/api/interpreter", {
@@ -102,8 +112,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
+      const text = await response.text();
+      console.error("Overpass API error:", response.status, text.slice(0, 500));
       return NextResponse.json(
-        { error: "Overpass API request failed" },
+        { error: "Overpass API request failed", detail: text.slice(0, 200) },
         { status: 502 },
       );
     }
