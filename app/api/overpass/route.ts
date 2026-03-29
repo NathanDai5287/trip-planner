@@ -115,7 +115,11 @@ export async function POST(request: NextRequest) {
       const text = await response.text();
       console.error("Overpass API error:", response.status, text.slice(0, 500));
       return NextResponse.json(
-        { error: "Overpass API request failed", detail: text.slice(0, 200) },
+        {
+          error: "Overpass API request failed",
+          detail: text.slice(0, 200),
+          debug: { bbox, query, overpassStatus: response.status },
+        },
         { status: 502 },
       );
     }
