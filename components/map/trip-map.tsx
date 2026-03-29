@@ -66,6 +66,7 @@ function TripMap({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedPOI, setSelectedPOI] = useState<PointOfInterest | null>(null);
   const [showPublicLands, setShowPublicLands] = useState(false);
+  const [publicLandsLoading, setPublicLandsLoading] = useState(false);
 
   // Fit bounds when destinations change
   useEffect(() => {
@@ -116,6 +117,18 @@ function TripMap({
   const handleLoad = useCallback(() => {
     setMapLoaded(true);
   }, []);
+
+  useEffect(() => {
+    if (!showPublicLands || !mapLoaded || !mapRef.current) return;
+    const map = mapRef.current.getMap();
+    const onSourceData = () => {
+      if (map.isSourceLoaded("public-lands")) {
+        setPublicLandsLoading(false);
+      }
+    };
+    map.on("sourcedata", onSourceData);
+    return () => { map.off("sourcedata", onSourceData); };
+  }, [showPublicLands, mapLoaded]);
 
   const handleAddPOIFromPopup = useCallback(
     (poi: PointOfInterest) => {
@@ -255,7 +268,7 @@ function TripMap({
                 "USFS", "#16a34a",
                 "#94a3b8",
               ],
-              "fill-opacity": 0.2,
+              "fill-opacity": 0.45,
             }}
           />
           <Layer
@@ -278,7 +291,10 @@ function TripMap({
       {/* Public lands toggle */}
       <div className="absolute top-3 left-3 z-10">
         <button
-          onClick={() => setShowPublicLands((v) => !v)}
+          onClick={() => {
+            if (!showPublicLands) setPublicLandsLoading(true);
+            setShowPublicLands((v) => !v);
+          }}
           className={`
             flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold shadow
             border transition-colors
@@ -288,7 +304,14 @@ function TripMap({
             }
           `}
         >
-          <Tent size={12} />
+          {publicLandsLoading && showPublicLands ? (
+            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          ) : (
+            <Tent size={12} />
+          )}
           Public Lands
         </button>
       </div>
