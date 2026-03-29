@@ -27,8 +27,10 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      console.error("Sign-in error:", code, message);
       if (code !== "auth/popup-closed-by-user") {
-        setError("Failed to sign in. Please try again.");
+        setError(`Failed to sign in (${code || "unknown"}). ${message || ""}`);
       }
     } finally {
       setIsPending(false);
