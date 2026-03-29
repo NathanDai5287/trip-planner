@@ -162,17 +162,35 @@ function DestinationList({
         const dragged = flatSorted.find((d) => d.id === activeId);
         if (!dragged || dragged.dayIndex === targetDay) return;
 
-        // Place dragged item at the end of the target day
         const without = flatSorted.filter((d) => d.id !== activeId);
-        const insertAt = without.findLastIndex((d) => d.dayIndex === targetDay);
-        const after = insertAt === -1
-          ? without.findIndex((d) => d.dayIndex > targetDay) // before next day
-          : insertAt + 1;
+        const movingForward = dragged.dayIndex < targetDay;
 
-        const reordered =
-          after === -1
-            ? [...without, dragged]
-            : [...without.slice(0, after), dragged, ...without.slice(after)];
+        let insertPos: number;
+        if (movingForward) {
+          // Prepend to front of target day
+          const firstInTarget = without.findIndex((d) => d.dayIndex === targetDay);
+          if (firstInTarget === -1) {
+            const nextDay = without.findIndex((d) => d.dayIndex > targetDay);
+            insertPos = nextDay === -1 ? without.length : nextDay;
+          } else {
+            insertPos = firstInTarget;
+          }
+        } else {
+          // Append to back of target day
+          const lastInTarget = without.findLastIndex((d) => d.dayIndex === targetDay);
+          if (lastInTarget === -1) {
+            const nextDay = without.findIndex((d) => d.dayIndex > targetDay);
+            insertPos = nextDay === -1 ? without.length : nextDay;
+          } else {
+            insertPos = lastInTarget + 1;
+          }
+        }
+
+        const reordered = [
+          ...without.slice(0, insertPos),
+          dragged,
+          ...without.slice(insertPos),
+        ];
 
         const updated = reordered.map((d, i) => ({
           ...d,
