@@ -1,10 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Trip, Destination } from "@/lib/types";
+import type { Trip, Destination, PointOfInterest } from "@/lib/types";
 import { Map as MapIcon, PanelLeftClose, PanelLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { decodePolyline } from "@/lib/polyline";
+import {
+  addDay as firestoreAddDay,
+  removeDay as firestoreRemoveDay,
+  insertDayBefore as firestoreInsertDayBefore,
+  addDestination,
+} from "@/lib/firestore";
 import { TripTitle } from "./trip-title";
 import { PlaceSearch } from "./place-search";
 import { DestinationList } from "./destination-list";
@@ -27,9 +33,11 @@ function TripEditor({ trip }: TripEditorProps) {
   const [destinations, setDestinations] = useState<Destination[]>(
     trip.destinations,
   );
+  const [totalDays, setTotalDays] = useState(trip.totalDays);
   const [routes, setRoutes] = useState<RouteSegment[]>([]);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [pois, setPois] = useState<PointOfInterest[]>([]);
   const routeCacheRef = useRef<Map<string, RouteSegment>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -46,9 +54,12 @@ function TripEditor({ trip }: TripEditorProps) {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // Sort by sortOrder to ensure correct pairing
+    const sorted = [...dests].sort((a, b) => a.sortOrder - b.sortOrder);
+
     const pairs: { from: Destination; to: Destination }[] = [];
-    for (let i = 0; i < dests.length - 1; i++) {
-      pairs.push({ from: dests[i], to: dests[i + 1] });
+    for (let i = 0; i < sorted.length - 1; i++) {
+      pairs.push({ from: sorted[i], to: sorted[i + 1] });
     }
 
     const newRoutes: RouteSegment[] = [];
@@ -144,6 +155,89 @@ function TripEditor({ trip }: TripEditorProps) {
     routeCacheRef.current.clear();
   }, []);
 
+  // Day management
+  const handleAddDay = useCallback(async () => {
+    const newTotal = totalDays + 1;
+    setTotalDays(newTotal);
+    try {
+      await firestoreAddDay(trip.id);
+    } catch {
+      setTotalDays(totalDays);
+      toast.error("Failed to add day");
+    }
+  }, [trip.id, totalDays]);
+
+  const handleRemoveDay = useCallback(
+    async (dayIndex: number) => {
+      if (totalDays <= 1) return;
+
+      const prevDests = destinations;
+      const prevTotal = totalDays;
+
+      // Optimistic: move destinations and shift days
+      const targetDay = dayIndex > 0 ? dayIndex - 1 : 1;
+      const updated = destinations.map((d) => {
+        if (d.dayIndex === dayIndex) return { ...d, dayIndex: targetDay };
+        if (d.dayIndex > dayIndex) return { ...d, dayIndex: d.dayIndex - 1 };
+        return d;
+      });
+      setDestinations(updated);
+      setTotalDays(totalDays - 1);
+
+      try {
+        await firestoreRemoveDay(trip.id, dayIndex);
+      } catch {
+        setDestinations(prevDests);
+        setTotalDays(prevTotal);
+        toast.error("Failed to remove day");
+      }
+    },
+    [trip.id, destinations, totalDays],
+  );
+
+  const handleInsertDayBefore = useCallback(
+    async (dayIndex: number) => {
+      const prevDests = destinations;
+      const prevTotal = totalDays;
+
+      // Optimistic: shift destinations at or after dayIndex up by 1
+      const updated = destinations.map((d) => {
+        if (d.dayIndex >= dayIndex) return { ...d, dayIndex: d.dayIndex + 1 };
+        return d;
+      });
+      setDestinations(updated);
+      setTotalDays(totalDays + 1);
+
+      try {
+        await firestoreInsertDayBefore(trip.id, dayIndex);
+      } catch {
+        setDestinations(prevDests);
+        setTotalDays(prevTotal);
+        toast.error("Failed to insert day");
+      }
+    },
+    [trip.id, destinations, totalDays],
+  );
+
+  // POI overlay: add POI as destination
+  const handleAddPOI = useCallback(
+    async (poi: PointOfInterest) => {
+      try {
+        const dest = await addDestination(trip.id, {
+          name: poi.name,
+          address: `${poi.type === "campsite" ? "Campsite" : poi.type === "gym" ? "Gym" : "Library"} — ${poi.name}`,
+          lat: poi.lat,
+          lng: poi.lng,
+        });
+        setDestinations((prev) => [...prev, dest]);
+        toast.success(`Added ${poi.name}`);
+      } catch {
+        toast.error("Failed to add destination");
+      }
+    },
+    [trip.id],
+  );
+
   return (
     <div className="flex flex-1 overflow-hidden relative">
       {/* Mobile sidebar toggle */}
@@ -193,10 +287,14 @@ function TripEditor({ trip }: TripEditorProps) {
               tripId={trip.id}
               destinations={destinations}
               routes={routes}
+              totalDays={totalDays}
               highlightedId={highlightedId}
               onReorder={handleDestinationsReordered}
               onRemove={handleDestinationRemoved}
               onHighlight={setHighlightedId}
+              onAddDay={handleAddDay}
+              onRemoveDay={handleRemoveDay}
+              onInsertDayBefore={handleInsertDayBefore}
             />
           </div>
 
@@ -228,6 +326,9 @@ function TripEditor({ trip }: TripEditorProps) {
           routes={routes}
           highlightedId={highlightedId}
           onMarkerClick={handleMarkerClick}
+          pois={pois}
+          onPoisChange={setPois}
+          onAddPOI={handleAddPOI}
         />
       </div>
     </div>
