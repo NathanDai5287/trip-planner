@@ -37,6 +37,20 @@ const MAP_STYLE = {
   ],
 };
 
+const DAY_COLORS = [
+  "#c0582f", // terracotta  (day 1)
+  "#2d6a4f", // forest      (day 2)
+  "#c49a1e", // gold        (day 3)
+  "#2e5fa3", // slate blue  (day 4)
+  "#7c4f7e", // plum        (day 5)
+  "#2d7d7d", // teal        (day 6)
+  "#8b5e3c", // warm brown  (day 7)
+];
+
+function getDayColor(dayIndex: number): string {
+  return DAY_COLORS[dayIndex % DAY_COLORS.length];
+}
+
 const POI_ICON_CONFIG = {
   gym:     { icon: Dumbbell,  color: "bg-blue-600",    borderColor: "border-blue-400" },
   library: { icon: BookOpen,  color: "bg-orange-600",  borderColor: "border-orange-400" },
@@ -138,17 +152,7 @@ function TripMap({
     [onAddPOI],
   );
 
-  const routeGeoJSON = {
-    type: "FeatureCollection" as const,
-    features: routes.map((route) => ({
-      type: "Feature" as const,
-      properties: {},
-      geometry: {
-        type: "LineString" as const,
-        coordinates: route.geometry,
-      },
-    })),
-  };
+  const destById = Object.fromEntries(destinations.map((d) => [d.id, d]));
 
   return (
     <Map
@@ -164,28 +168,50 @@ function TripMap({
     >
       <NavigationControl position="top-right" />
 
-      {/* Route polylines */}
-      {routes.length > 0 && (
-        <Source id="route" type="geojson" data={routeGeoJSON}>
-          <Layer
-            id="route-line-casing"
-            type="line"
-            paint={{
-              "line-color": "#ffffff",
-              "line-width": 8,
-              "line-opacity": 0.7,
+      {/* Route polylines — one source per segment for per-segment gradients */}
+      {routes.map((route) => {
+        const fromColor = getDayColor(destById[route.fromId]?.dayIndex ?? 0);
+        const toColor = getDayColor(destById[route.toId]?.dayIndex ?? 0);
+        const sourceId = `route-${route.fromId}-${route.toId}`;
+        return (
+          <Source
+            key={sourceId}
+            id={sourceId}
+            type="geojson"
+            lineMetrics={true}
+            data={{
+              type: "FeatureCollection",
+              features: [{
+                type: "Feature",
+                properties: {},
+                geometry: { type: "LineString", coordinates: route.geometry },
+              }],
             }}
-          />
-          <Layer
-            id="route-line"
-            type="line"
-            paint={{
-              "line-color": "#c0582f",
-              "line-width": 5,
-            }}
-          />
-        </Source>
-      )}
+          >
+            <Layer
+              id={`casing-${route.fromId}-${route.toId}`}
+              type="line"
+              paint={{
+                "line-color": "#ffffff",
+                "line-width": 8,
+                "line-opacity": 0.7,
+              }}
+            />
+            <Layer
+              id={`line-${route.fromId}-${route.toId}`}
+              type="line"
+              paint={{
+                "line-width": 5,
+                "line-gradient": [
+                  "interpolate", ["linear"], ["line-progress"],
+                  0, fromColor,
+                  1, toColor,
+                ] as unknown as string,
+              }}
+            />
+          </Source>
+        );
+      })}
 
       {/* Destination markers */}
       {destinations.map((dest, index) => (
