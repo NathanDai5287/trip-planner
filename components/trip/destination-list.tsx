@@ -47,6 +47,24 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   x: 0,
 });
 
+// Invisible droppable zone at the bottom of each day's card list.
+// Needed because dropping onto the last card of a day places the dragged
+// item before it (arrayMove semantics), making "last slot" unreachable
+// when dragging from the day below. Dropping here always appends to the day.
+function DayEndDropZone({ dayIndex }: { dayIndex: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `end-of-day-${dayIndex}` });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`mx-1 rounded-sm transition-all duration-150 ${
+        isOver
+          ? "h-4 bg-terracotta/10 border border-dashed border-terracotta/30"
+          : "h-2"
+      }`}
+    />
+  );
+}
+
 // Makes the day header row a real droppable zone so the DnD system
 // detects drops there even though there's no sortable item underneath.
 function DayDropZone({
@@ -199,6 +217,36 @@ function DestinationList({
         return;
       }
 
+      // ── Drop on end-of-day zone ───────────────────────────────────────
+      if (overId.startsWith("end-of-day-")) {
+        const targetDay = parseInt(overId.replace("end-of-day-", ""), 10);
+        const dragged = flatSorted.find((d) => d.id === activeId);
+        if (!dragged) return;
+
+        const without = flatSorted.filter((d) => d.id !== activeId);
+        const lastInTarget = without.findLastIndex((d) => d.dayIndex === targetDay);
+        let insertPos: number;
+        if (lastInTarget === -1) {
+          const nextDay = without.findIndex((d) => d.dayIndex > targetDay);
+          insertPos = nextDay === -1 ? without.length : nextDay;
+        } else {
+          insertPos = lastInTarget + 1;
+        }
+
+        const reordered = [
+          ...without.slice(0, insertPos),
+          dragged,
+          ...without.slice(insertPos),
+        ];
+        const updated = reordered.map((d, i) => ({
+          ...d,
+          sortOrder: i,
+          dayIndex: d.id === activeId ? targetDay : d.dayIndex,
+        }));
+        await save(updated);
+        return;
+      }
+
       // ── Drop on a specific card ────────────────────────────────────────
       const oldIndex = flatSorted.findIndex((d) => d.id === activeId);
       const newIndex = flatSorted.findIndex((d) => d.id === overId);
@@ -324,6 +372,7 @@ function DestinationList({
                         No stops planned for this day
                       </p>
                     )}
+                    <DayEndDropZone dayIndex={dayIndex} />
                   </div>
                 )}
               </div>

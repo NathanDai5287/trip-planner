@@ -206,7 +206,8 @@ function TripMap({
                   "interpolate", ["linear"], ["line-progress"],
                   0, fromColor,
                   1, toColor,
-                ] as unknown as string,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ] as any,
               }}
             />
           </Source>
