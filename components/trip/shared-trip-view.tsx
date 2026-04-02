@@ -1,19 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
-import type { Trip, Destination, RouteSegment } from "@/lib/types";
+import type { Trip, Destination } from "@/lib/types";
 import {
   Compass,
   Map as MapIcon,
   List,
   MapPin,
   Car,
-  Clock,
 } from "lucide-react";
-import { decodePolyline } from "@/lib/polyline";
 import { formatDuration } from "@/lib/format-duration";
-import { TripMap } from "@/components/map/trip-map";
+import { TripMap, getDayColor } from "@/components/map/trip-map";
 import { Button } from "@/components/ui/button";
 
 type TripWithDestinations = Trip & { destinations: Destination[] };
@@ -23,87 +21,11 @@ interface SharedTripViewProps {
 }
 
 function SharedTripView({ trip }: SharedTripViewProps) {
-  const [routes, setRoutes] = useState<RouteSegment[]>([]);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"map" | "list">("map");
-  const abortRef = useRef<AbortController | null>(null);
 
   const destinations = trip.destinations;
-
-  const fetchRoutes = useCallback(async (dests: Destination[]) => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-
-    if (dests.length < 2) {
-      setRoutes([]);
-      return;
-    }
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const pairs: { from: Destination; to: Destination }[] = [];
-    for (let i = 0; i < dests.length - 1; i++) {
-      pairs.push({ from: dests[i], to: dests[i + 1] });
-    }
-
-    const newRoutes: RouteSegment[] = [];
-
-    for (const pair of pairs) {
-      if (controller.signal.aborted) return;
-
-      try {
-        const coords = `${pair.from.lng},${pair.from.lat};${pair.to.lng},${pair.to.lat}`;
-        const res = await fetch(`/api/osrm?coordinates=${coords}`, {
-          signal: controller.signal,
-        });
-
-        if (!res.ok) throw new Error("Route fetch failed");
-
-        const data = await res.json();
-        if (data.routes && data.routes.length > 0) {
-          const osrmRoute = data.routes[0];
-          const decoded = decodePolyline(osrmRoute.geometry);
-          const geometry: [number, number][] = decoded.map(([lat, lng]) => [
-            lng,
-            lat,
-          ]);
-
-          const segment: RouteSegment = {
-            fromId: pair.from.id,
-            toId: pair.to.id,
-            duration: osrmRoute.duration,
-            distance: osrmRoute.distance,
-            geometry,
-          };
-
-          newRoutes.push(segment);
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("Failed to fetch route:", err);
-      }
-
-      // Rate limit: wait 1s between requests
-      if (!controller.signal.aborted) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    }
-
-    if (!controller.signal.aborted) {
-      setRoutes(newRoutes);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchRoutes(destinations);
-    return () => {
-      if (abortRef.current) {
-        abortRef.current.abort();
-      }
-    };
-  }, [destinations, fetchRoutes]);
+  const routes = trip.routes;
 
   const handleMarkerClick = useCallback((destId: string) => {
     setHighlightedId(destId);
@@ -111,9 +33,18 @@ function SharedTripView({ trip }: SharedTripViewProps) {
     setMobileView("list");
   }, []);
 
-  function getDriveTimeToNext(destId: string): number | null {
-    const route = routes.find((r) => r.fromId === destId);
+  function getDriveTime(fromId: string, toId: string): number | null {
+    const route = routes.find((r) => r.fromId === fromId && r.toId === toId);
     return route ? route.duration : null;
+  }
+
+  function getDayDriveTime(dayDests: Destination[]): number {
+    let total = 0;
+    for (let i = 0; i < dayDests.length - 1; i++) {
+      const t = getDriveTime(dayDests[i].id, dayDests[i + 1].id);
+      if (t) total += t;
+    }
+    return total;
   }
 
   const totalSeconds = routes.reduce((sum, r) => sum + r.duration, 0);
@@ -225,25 +156,62 @@ function SharedTripView({ trip }: SharedTripViewProps) {
                       .filter((d) => d.dayIndex === dayIndex)
                       .sort((a, b) => a.sortOrder - b.sortOrder);
 
+                    const prevDayDests = dayIndex > 0
+                      ? destinations
+                          .filter((d) => d.dayIndex === dayIndex - 1)
+                          .sort((a, b) => a.sortOrder - b.sortOrder)
+                      : [];
+
+                    const crossDayTime =
+                      prevDayDests.length > 0 && dayDests.length > 0
+                        ? getDriveTime(
+                            prevDayDests[prevDayDests.length - 1].id,
+                            dayDests[0].id,
+                          )
+                        : null;
+
+                    const dayDriveTime = getDayDriveTime(dayDests);
+
                     return (
                       <div key={dayIndex}>
+                        {dayIndex > 0 && (
+                          <div className="flex items-center gap-2 py-0.5 px-1">
+                            <div className="flex-1 h-px bg-border/60" />
+                            {crossDayTime !== null && (
+                              <span className="text-xs text-muted/50 shrink-0 tabular-nums">
+                                {formatDuration(crossDayTime)}
+                              </span>
+                            )}
+                            <div className="flex-1 h-px bg-border/60" />
+                          </div>
+                        )}
+
                         {trip.totalDays > 1 && (
                           <div className="flex items-center gap-2 pt-3 first:pt-0 pb-1">
                             <h3 className="font-display text-sm font-semibold text-charcoal tracking-wide uppercase">
                               Day {dayIndex + 1}
                             </h3>
                             <div className="flex-1 h-px bg-border" />
+                            {dayDests.length > 0 && dayDriveTime > 0 && (
+                              <span className="text-xs text-muted shrink-0">
+                                {formatDuration(dayDriveTime)}
+                              </span>
+                            )}
                           </div>
                         )}
 
-                        {dayDests.map((dest) => {
-                          const driveTime = getDriveTimeToNext(dest.id);
+                        {dayDests.map((dest, i) => {
+                          const nextDest = dayDests[i + 1];
+                          const driveTime = nextDest
+                            ? getDriveTime(dest.id, nextDest.id)
+                            : null;
+
                           return (
-                            <div key={dest.id} className="flex flex-col">
+                            <div key={dest.id}>
                               <div
                                 className={`
                                   flex items-start gap-3 rounded-lg border bg-cream p-3
-                                  border-l-4 border-l-terracotta
+                                  border-l-4
                                   transition-all duration-200 cursor-pointer
                                   shadow-sm
                                   ${
@@ -252,6 +220,7 @@ function SharedTripView({ trip }: SharedTripViewProps) {
                                       : "border-border hover:bg-stone-light/50"
                                   }
                                 `}
+                                style={{ borderLeftColor: getDayColor(dest.dayIndex) }}
                                 onClick={() => setHighlightedId(dest.id)}
                                 role="button"
                                 tabIndex={0}
@@ -262,7 +231,10 @@ function SharedTripView({ trip }: SharedTripViewProps) {
                                   }
                                 }}
                               >
-                                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
+                                <div
+                                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white text-xs font-bold"
+                                  style={{ backgroundColor: getDayColor(dest.dayIndex) }}
+                                >
                                   {dest.sortOrder + 1}
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -280,12 +252,13 @@ function SharedTripView({ trip }: SharedTripViewProps) {
                                 </div>
                               </div>
 
-                              {driveTime !== null && (
-                                <div className="flex justify-center py-1.5">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-stone px-2 py-0.5 text-xs text-muted">
-                                    <Clock size={10} className="shrink-0" />
+                              {nextDest && driveTime !== null && (
+                                <div className="flex items-center gap-2 py-0.5 px-1">
+                                  <div className="flex-1 h-px bg-border/60" />
+                                  <span className="text-xs text-muted/50 shrink-0 tabular-nums">
                                     {formatDuration(driveTime)}
                                   </span>
+                                  <div className="flex-1 h-px bg-border/60" />
                                 </div>
                               )}
                             </div>

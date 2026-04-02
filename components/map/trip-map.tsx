@@ -47,7 +47,7 @@ const DAY_COLORS = [
   "#8b5e3c", // warm brown  (day 7)
 ];
 
-function getDayColor(dayIndex: number): string {
+export function getDayColor(dayIndex: number): string {
   return DAY_COLORS[dayIndex % DAY_COLORS.length];
 }
 
@@ -168,17 +168,15 @@ function TripMap({
     >
       <NavigationControl position="top-right" />
 
-      {/* Route polylines — one source per segment for per-segment gradients */}
+      {/* Route polylines — solid color per segment, colored by destination day */}
       {routes.map((route) => {
-        const fromColor = getDayColor(destById[route.fromId]?.dayIndex ?? 0);
-        const toColor = getDayColor(destById[route.toId]?.dayIndex ?? 0);
+        const color = getDayColor(destById[route.toId]?.dayIndex ?? 0);
         const sourceId = `route-${route.fromId}-${route.toId}`;
         return (
           <Source
             key={sourceId}
             id={sourceId}
             type="geojson"
-            lineMetrics={true}
             data={{
               type: "FeatureCollection",
               features: [{
@@ -202,12 +200,7 @@ function TripMap({
               type="line"
               paint={{
                 "line-width": 5,
-                "line-gradient": [
-                  "interpolate", ["linear"], ["line-progress"],
-                  0, fromColor,
-                  1, toColor,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ] as any,
+                "line-color": color,
               }}
             />
           </Source>
@@ -215,38 +208,44 @@ function TripMap({
       })}
 
       {/* Destination markers */}
-      {destinations.map((dest, index) => (
-        <Marker
-          key={dest.id}
-          longitude={dest.lng}
-          latitude={dest.lat}
-          anchor="bottom"
-          onClick={(e) => {
-            e.originalEvent.stopPropagation();
-            onMarkerClick(dest.id);
-          }}
-        >
-          <div
-            className={`flex flex-col items-center cursor-pointer transition-all duration-200 ${
-              highlightedId === dest.id ? "scale-125" : "hover:scale-110"
-            }`}
+      {destinations.map((dest, index) => {
+        const dayColor = getDayColor(dest.dayIndex);
+        return (
+          <Marker
+            key={dest.id}
+            longitude={dest.lng}
+            latitude={dest.lat}
+            anchor="bottom"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              onMarkerClick(dest.id);
+            }}
           >
             <div
-              className={`
-                flex items-center justify-center
-                w-9 h-9 rounded-full
-                bg-terracotta text-white text-sm font-bold
-                border-[3px] shadow-[0_4px_12px_rgba(0,0,0,0.45)]
-                ${highlightedId === dest.id ? "border-white ring-2 ring-terracotta/60" : "border-white"}
-              `}
+              className={`flex flex-col items-center cursor-pointer transition-all duration-200 ${
+                highlightedId === dest.id ? "scale-125" : "hover:scale-110"
+              }`}
             >
-              {index + 1}
+              <div
+                className="flex items-center justify-center w-9 h-9 rounded-full text-white text-sm font-bold border-[3px] border-white"
+                style={{
+                  backgroundColor: dayColor,
+                  boxShadow: highlightedId === dest.id
+                    ? `0 4px 12px rgba(0,0,0,0.45), 0 0 0 3px ${dayColor}99`
+                    : "0 4px 12px rgba(0,0,0,0.45)",
+                }}
+              >
+                {index + 1}
+              </div>
+              {/* Pin tip */}
+              <div
+                className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[9px] border-l-transparent border-r-transparent -mt-px"
+                style={{ borderTopColor: dayColor }}
+              />
             </div>
-            {/* Pin tip */}
-            <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[9px] border-l-transparent border-r-transparent border-t-terracotta -mt-px" />
-          </div>
-        </Marker>
-      ))}
+          </Marker>
+        );
+      })}
 
       {/* POI markers */}
       {pois.map((poi) => {
