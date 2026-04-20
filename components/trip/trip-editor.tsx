@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { nanoid } from "nanoid";
-import type { Trip, Destination, PointOfInterest, BudgetData, PackingItem, RouteSegment } from "@/lib/types";
+import type { Trip, Destination, PointOfInterest, BudgetData, PackingItem, RouteSegment, DestinationCategory } from "@/lib/types";
 import { DEFAULT_BUDGET } from "@/lib/types";
 import { Map as MapIcon, PanelLeftClose, MapPin, Calculator, CheckSquare } from "lucide-react";
 import { BudgetPanel } from "./budget-panel";
@@ -16,6 +16,7 @@ import {
   addDestination,
   removeDestination,
   updateRoutes,
+  updateDestinationCategory,
 } from "@/lib/firestore";
 import { TripTitle } from "./trip-title";
 import { PlaceSearch } from "./place-search";
@@ -251,6 +252,27 @@ function TripEditor({ trip }: TripEditorProps) {
     [trip.id, destinations, totalDays],
   );
 
+  const handleCategoryChange = useCallback(
+    (destId: string, category: DestinationCategory | null) => {
+      setDestinations((prev) =>
+        prev.map((d) =>
+          d.id === destId ? { ...d, category: category ?? undefined } : d,
+        ),
+      );
+      updateDestinationCategory(trip.id, destId, category).catch(() => {
+        setDestinations((prev) =>
+          prev.map((d) => {
+            if (d.id !== destId) return d;
+            const original = trip.destinations.find((od) => od.id === destId);
+            return { ...d, category: original?.category };
+          }),
+        );
+        toast.error("Failed to update category");
+      });
+    },
+    [trip.id, trip.destinations],
+  );
+
   // POI overlay: add POI as destination
   const handleAddPOI = useCallback(
     (poi: PointOfInterest) => {
@@ -353,6 +375,7 @@ function TripEditor({ trip }: TripEditorProps) {
                   onReorder={handleDestinationsReordered}
                   onRemove={handleDestinationRemoved}
                   onHighlight={setHighlightedId}
+                  onCategoryChange={handleCategoryChange}
                   onAddDay={handleAddDay}
                   onRemoveDay={handleRemoveDay}
                   onInsertDayBefore={handleInsertDayBefore}

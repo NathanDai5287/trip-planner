@@ -11,7 +11,7 @@ import {
   type MapRef,
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Dumbbell, BookOpen, Mountain } from "lucide-react";
+import { Dumbbell, BookOpen, Mountain, Tent } from "lucide-react";
 import type { Destination, PointOfInterest } from "@/lib/types";
 import type { RouteSegment } from "@/components/trip/trip-editor";
 import { POIOverlayControls } from "./poi-overlay-controls";
@@ -50,6 +50,11 @@ const DAY_COLORS = [
 export function getDayColor(dayIndex: number): string {
   return DAY_COLORS[dayIndex % DAY_COLORS.length];
 }
+
+const DEST_CATEGORY_MAP = {
+  library:  { icon: BookOpen, color: "#ea580c" },  // orange-600
+  campsite: { icon: Tent,     color: "#047857" },  // emerald-700
+} as const;
 
 const POI_ICON_CONFIG = {
   gym:     { icon: Dumbbell,  color: "bg-blue-600",    borderColor: "border-blue-400" },
@@ -210,6 +215,9 @@ function TripMap({
       {/* Destination markers */}
       {destinations.map((dest, index) => {
         const dayColor = getDayColor(dest.dayIndex);
+        const catConfig = dest.category ? DEST_CATEGORY_MAP[dest.category] : null;
+        const markerColor = catConfig?.color ?? dayColor;
+        const CatIcon = catConfig?.icon;
         return (
           <Marker
             key={dest.id}
@@ -229,18 +237,18 @@ function TripMap({
               <div
                 className="flex items-center justify-center w-9 h-9 rounded-full text-white text-sm font-bold border-[3px] border-white"
                 style={{
-                  backgroundColor: dayColor,
+                  backgroundColor: markerColor,
                   boxShadow: highlightedId === dest.id
-                    ? `0 4px 12px rgba(0,0,0,0.45), 0 0 0 3px ${dayColor}99`
+                    ? `0 4px 12px rgba(0,0,0,0.45), 0 0 0 3px ${markerColor}99`
                     : "0 4px 12px rgba(0,0,0,0.45)",
                 }}
               >
-                {index + 1}
+                {CatIcon ? <CatIcon size={16} /> : index + 1}
               </div>
               {/* Pin tip */}
               <div
                 className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[9px] border-l-transparent border-r-transparent -mt-px"
-                style={{ borderTopColor: dayColor }}
+                style={{ borderTopColor: markerColor }}
               />
             </div>
           </Marker>

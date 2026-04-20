@@ -18,7 +18,7 @@ import {
   sortableKeyboardCoordinates,
   arrayMove,
 } from "@dnd-kit/sortable";
-import type { Destination } from "@/lib/types";
+import type { Destination, DestinationCategory } from "@/lib/types";
 import { MapPin, Plus, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { reorderDestinations } from "@/lib/firestore";
@@ -37,6 +37,7 @@ interface DestinationListProps {
   onReorder: (destinations: Destination[]) => void;
   onRemove: (destId: string) => void;
   onHighlight: (destId: string | null) => void;
+  onCategoryChange: (destId: string, category: DestinationCategory | null) => void;
   onAddDay: () => void;
   onRemoveDay: (dayIndex: number) => void;
   onInsertDayBefore: (dayIndex: number) => void;
@@ -117,6 +118,7 @@ function DestinationList({
   onReorder,
   onRemove,
   onHighlight,
+  onCategoryChange,
   onAddDay,
   onRemoveDay,
   onInsertDayBefore,
@@ -357,6 +359,7 @@ function DestinationList({
                             isHighlighted={highlightedId === dest.id}
                             onRemove={onRemove}
                             onHighlight={onHighlight}
+                            onCategoryChange={onCategoryChange}
                           />
                           {nextDest && (
                             <DriveTimeDivider

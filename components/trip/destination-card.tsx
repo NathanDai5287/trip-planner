@@ -3,10 +3,15 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2 } from "lucide-react";
-import type { Destination } from "@/lib/types";
+import { GripVertical, Trash2, BookOpen, Tent } from "lucide-react";
+import type { Destination, DestinationCategory } from "@/lib/types";
 import toast from "react-hot-toast";
 import { updateDestinationNotes } from "@/lib/firestore";
+
+const CATEGORY_CONFIG = {
+  library:  { icon: BookOpen, bg: "bg-orange-600",  label: "Library" },
+  campsite: { icon: Tent,     bg: "bg-emerald-700", label: "Campsite" },
+} as const;
 
 interface DestinationCardProps {
   destination: Destination;
@@ -15,6 +20,7 @@ interface DestinationCardProps {
   isHighlighted: boolean;
   onRemove: (destId: string) => void;
   onHighlight: (destId: string | null) => void;
+  onCategoryChange: (destId: string, category: DestinationCategory | null) => void;
 }
 
 function DestinationCard({
@@ -24,9 +30,12 @@ function DestinationCard({
   isHighlighted,
   onRemove,
   onHighlight,
+  onCategoryChange,
 }: DestinationCardProps) {
   const [notes, setNotes] = useState(destination.notes);
   const [editingNotes, setEditingNotes] = useState(false);
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const categoryMenuRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesRef = useRef(notes);
 
@@ -78,6 +87,25 @@ function DestinationCard({
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
+  useEffect(() => {
+    if (!showCategoryMenu) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (categoryMenuRef.current && !categoryMenuRef.current.contains(e.target as Node)) {
+        setShowCategoryMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showCategoryMenu]);
+
+  const handleCategorySelect = useCallback(
+    (category: DestinationCategory | null) => {
+      setShowCategoryMenu(false);
+      onCategoryChange(destination.id, category);
+    },
+    [destination.id, onCategoryChange],
+  );
+
   const handleDelete = useCallback(() => {
     onRemove(destination.id);
   }, [destination.id, onRemove]);
@@ -113,8 +141,55 @@ function DestinationCard({
         <GripVertical size={16} />
       </button>
 
-      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta text-white text-xs font-bold">
-        {index + 1}
+      <div className="relative" ref={categoryMenuRef}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCategoryMenu((v) => !v);
+          }}
+          className={`
+            mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full
+            text-white text-xs font-bold transition-colors cursor-pointer
+            ${destination.category ? CATEGORY_CONFIG[destination.category].bg : "bg-terracotta"}
+          `}
+          aria-label="Set destination category"
+        >
+          {destination.category
+            ? (() => { const Icon = CATEGORY_CONFIG[destination.category!].icon; return <Icon size={12} />; })()
+            : index + 1}
+        </button>
+
+        {showCategoryMenu && (
+          <div className="absolute left-0 top-full mt-1 z-50 bg-cream border border-border rounded-lg shadow-lg py-1 min-w-[130px]">
+            {([
+              { key: "library",  cat: "library"  as DestinationCategory },
+              { key: "campsite", cat: "campsite" as DestinationCategory },
+              { key: "none",     cat: null },
+            ]).map(({ key, cat }) => {
+              const isActive = (destination.category ?? null) === cat;
+              const config = cat ? CATEGORY_CONFIG[cat] : null;
+              const Icon = config?.icon;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCategorySelect(cat);
+                  }}
+                  className={`
+                    flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors cursor-pointer
+                    ${isActive ? "bg-stone-light text-charcoal font-medium" : "text-muted hover:bg-stone-light hover:text-charcoal"}
+                  `}
+                >
+                  {Icon ? <Icon size={12} /> : <span className="w-3" />}
+                  {cat ? config!.label : "None"}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">

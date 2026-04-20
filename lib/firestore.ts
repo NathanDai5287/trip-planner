@@ -14,7 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { nanoid } from "nanoid";
-import type { Trip, Destination, BudgetData, PackingItem, RouteSegment } from "./types";
+import type { Trip, Destination, BudgetData, PackingItem, RouteSegment, DestinationCategory } from "./types";
 import { DEFAULT_BUDGET } from "./types";
 
 function tripFromDoc(id: string, data: Record<string, unknown>): Trip {
@@ -164,6 +164,24 @@ export async function updateDestinationNotes(
 export async function reorderDestinations(tripId: string, destinations: Destination[]): Promise<void> {
   await updateDoc(doc(db, "trips", tripId), {
     destinations,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function updateDestinationCategory(
+  tripId: string,
+  destinationId: string,
+  category: DestinationCategory | null,
+) {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new Error("Trip not found");
+
+  await updateDoc(doc(db, "trips", tripId), {
+    destinations: trip.destinations.map((d) =>
+      d.id === destinationId
+        ? { ...d, category: category ?? undefined }
+        : d,
+    ),
     updatedAt: serverTimestamp(),
   });
 }

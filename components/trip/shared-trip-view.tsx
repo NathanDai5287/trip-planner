@@ -9,6 +9,8 @@ import {
   List,
   MapPin,
   Car,
+  BookOpen,
+  Tent,
 } from "lucide-react";
 import { formatDuration } from "@/lib/format-duration";
 import { TripMap, getDayColor } from "@/components/map/trip-map";
@@ -233,9 +235,19 @@ function SharedTripView({ trip }: SharedTripViewProps) {
                               >
                                 <div
                                   className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white text-xs font-bold"
-                                  style={{ backgroundColor: getDayColor(dest.dayIndex) }}
+                                  style={{
+                                    backgroundColor: dest.category === "library"
+                                      ? "#ea580c"
+                                      : dest.category === "campsite"
+                                        ? "#047857"
+                                        : getDayColor(dest.dayIndex),
+                                  }}
                                 >
-                                  {dest.sortOrder + 1}
+                                  {dest.category === "library"
+                                    ? <BookOpen size={12} />
+                                    : dest.category === "campsite"
+                                      ? <Tent size={12} />
+                                      : dest.sortOrder + 1}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-charcoal truncate">

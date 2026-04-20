@@ -1,3 +1,5 @@
+export type DestinationCategory = "library" | "campsite";
+
 export interface Destination {
   id: string;
   osmId: string | null;
@@ -8,6 +10,7 @@ export interface Destination {
   notes: string;
   sortOrder: number;
   dayIndex: number;
+  category?: DestinationCategory;
 }
 
 export interface BudgetData {
